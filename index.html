@@ -347,49 +347,47 @@
     }
     
     function formatTime(seconds) {
-        if (!seconds || seconds === 0) return '-';
+        if (!seconds || seconds === 0) return '0:00';
         const mins = Math.floor(seconds / 60);
         const secs = Math.floor(seconds % 60);
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
     
-    // 繁体转简体（简单映射）
+    // 完整的繁体转简体映射表（覆盖常用字）
     function traditionalToSimple(text) {
         const map = {
-            '我們': '我们', '這個': '这个', '這樣': '这样', '學校': '学校',
-            '親近': '亲近', '臉書': '脸书', '這邊': '这边', '應該': '应该',
-            '與': '与', '無': '无', '還有': '还有', '讓': '让', '這': '这',
-            '們': '们', '個': '个', '說': '说', '時': '时', '後': '后',
-            '進': '进', '問': '问', '開': '开', '來': '来', '東': '东',
-            '對': '对', '過': '过', '現': '现', '長': '长', '頭': '头',
-            '話': '话', '點': '点', '發': '发', '覺': '觉', '車': '车',
-            '經': '经', '當': '当', '從': '从', '兩': '两', '會': '会',
-            '什': '什', '麼': '么', '怎': '怎', '麼': '么', '您': '您',
-            '們': '们', '別': '别', '關': '关', '係': '系', '選': '选',
-            '擇': '择', '結': '结', '構': '构', '問': '问', '題': '题',
-            '態': '态', '應': '应', '該': '该', '試': '试', '圖': '图',
-            '書': '书', '畫': '画', '盡': '尽', '量': '量', '見': '见',
-            '識': '识', '證': '证', '認': '认', '識': '识', '語': '语',
-            '調': '调', '節': '节', '務': '务', '務': '务', '場': '场',
-            '館': '馆', '興': '兴', '奮': '奋', '處': '处', '處': '处',
-            '點': '点', '擊': '击', '關': '关', '係': '系', '統': '统',
-            '計': '计', '劃': '划', '則': '则', '剛': '刚', '才': '才',
-            '剛': '刚', '纔': '才', '買': '买', '賣': '卖', '讀': '读',
-            '寫': '写', '聽': '听', '見': '见', '聞': '闻', '聲': '声',
-            '響': '响', '響': '响', '區': '区', '別': '别', '隻': '只',
-            '隻': '只', '隻': '只', '雙': '双', '對': '对', '對': '对',
-            '應': '应', '該': '该', '準': '准', '備': '备', '複': '复',
-            '雜': '杂', '簡': '简', '單': '单', '愛': '爱', '護': '护',
-            '據': '据', '說': '说', '談': '谈', '論': '论', '講': '讲',
-            '話': '话', '語': '语', '言': '言', '記': '记', '錄': '录',
-            '載': '载', '資': '资', '料': '料', '財': '财', '產': '产',
-            '實': '实', '現': '现', '實': '实', '現': '现', '場': '场',
-            '觀': '观', '眾': '众', '眾': '众', '親': '亲', '們': '们',
-            '們': '们', '們': '们', '嗎': '吗', '呢': '呢', '吧': '吧',
-            '啊': '啊', '哦': '哦', '嗯': '嗯', '唉': '唉', '喲': '哟',
-            '餵': '喂', '餵': '喂', '誒': '诶', '吶': '呐', '唄': '呗',
-            '喏': '喏', '喔': '喔', '唷': '唷', '啵': '啵', '啰': '啰',
-            '嘍': '喽', '嘛': '嘛', '嘞': '嘞', '喱': '喱', '喱': '喱'
+            '變': '变', '馬': '马', '時': '时', '進': '进', '學': '学', '說': '说', '話': '话',
+            '們': '们', '這': '这', '個': '个', '來': '来', '麼': '么', '麼': '么', '們': '们',
+            '員': '员', '興': '兴', '奮': '奋', '頭': '头', '們': '们', '應': '应', '該': '该',
+            '問': '问', '題': '题', '開': '开', '來': '来', '長': '长', '東': '东', '車': '车',
+            '書': '书', '畫': '画', '盡': '尽', '見': '见', '識': '识', '認': '认', '語': '语',
+            '調': '调', '節': '节', '務': '务', '場': '场', '館': '馆', '處': '处', '點': '点',
+            '擊': '击', '統': '统', '計': '计', '劃': '划', '則': '则', '剛': '刚', '纔': '才',
+            '買': '买', '賣': '卖', '讀': '读', '寫': '写', '聽': '听', '聞': '闻', '聲': '声',
+            '響': '响', '區': '区', '別': '别', '隻': '只', '雙': '双', '對': '对', '備': '备',
+            '複': '复', '雜': '杂', '簡': '简', '單': '单', '愛': '爱', '護': '护', '據': '据',
+            '談': '谈', '論': '论', '講': '讲', '記': '记', '錄': '录', '載': '载', '資': '资',
+            '料': '料', '財': '财', '產': '产', '實': '实', '現': '现', '場': '场', '觀': '观',
+            '眾': '众', '親': '亲', '幫': '帮', '請': '请', '問': '问', '沒': '没', '還': '还',
+            '讓': '让', '過': '过', '發': '发', '覺': '觉', '經': '经', '當': '当', '從': '从',
+            '兩': '两', '會': '会', '什': '什', '您': '您', '別': '别', '關': '关', '係': '系',
+            '選': '选', '擇': '择', '結': '结', '構': '构', '態': '态', '圖': '图', '盡': '尽',
+            '為': '为', '無': '无', '與': '与', '寫': '写', '轉': '转', '換': '换', '顯': '显',
+            '示': '示', '後': '后', '並': '并', '於': '于', '產': '产', '種': '种', '義': '义',
+            '務': '务', '報': '报', '紙': '纸', '筆': '笔', '畫': '画', '鍵': '键', '盤': '盘',
+            '腦': '脑', '電': '电', '視': '视', '聽': '听', '眾': '众', '響': '响', '氣': '气',
+            '順': '顺', '風': '风', '電': '电', '車': '车', '馬': '马', '飛': '飞', '機': '机',
+            '時': '时', '間': '间', '鐘': '钟', '錶': '表', '帶': '带', '來': '来', '進': '进',
+            '過': '过', '遠': '远', '離': '离', '開': '开', '關': '关', '門': '门', '們': '们',
+            '誰': '谁', '為': '为', '什': '什', '麼': '么', '這': '这', '裡': '里', '裡': '里',
+            '裏': '里', '國': '国', '內': '内', '國': '国', '際': '际', '關': '关', '係': '系',
+            '統': '统', '總': '总', '結': '结', '給': '给', '給': '给', '紅': '红', '綠': '绿',
+            '藍': '蓝', '黃': '黄', '黑': '黑', '白': '白', '色': '色', '條': '条', '紋': '纹',
+            '動': '动', '態': '态', '畫': '画', '面': '面', '圖': '图', '片': '片', '資': '资',
+            '訊': '讯', '號': '号', '碼': '码', '號': '号', '稱': '称', '謂': '谓', '語': '语',
+            '言': '言', '話': '话', '說': '说', '講': '讲', '談': '谈', '論': '论', '語': '语',
+            '調': '调', '節': '节', '約': '约', '級': '级', '極': '极', '樂': '乐', '觀': '观',
+            '眾': '众', '聽': '听', '聞': '闻', '聲': '声', '響': '响', '氣': '气', '順': '顺'
         };
         
         let result = text;
@@ -399,24 +397,13 @@
         return result;
     }
     
-    // 智能添加标点符号（基于停顿和关键词）
+    // 智能添加标点
     function addPunctuation(text) {
-        // 在明显停顿处添加标点
-        let result = text
-            // 在"然后"、"但是"、"所以"前加句号或逗号
-            .replace(/([然后|但是|所以|可是|不过|接着|接下来|最后|首先|其次])/g, '，$1')
-            // 在语气词后加标点
+        return text
+            .replace(/([然后|但是|所以|可是|不过|接着|接下来|最后|首先|其次|另外|而且])/g, '，$1')
             .replace(/([吗|呢|吧|啊|哦|嗯])([^，。！？])/g, '$1，$2')
-            // 在"是"、"有"等词后适当断句
-            .replace(/([我们|你们|他们|大家|老师|小朋友])([要|想|觉得|认为])/g, '$1$2')
-            // 长句在"的"后适当断句（避免过度）
-            .replace(/的([^，。！？]{10,})/g, '的，$1')
-            // 去除连续重复的标点
-            .replace(/([，。！？])\1+/g, '$1')
-            // 句末加句号
+            .replace(/([我们|你们|他们|大家|老师|小朋友|同学|朋友])([要|想|觉得|认为|希望])/g, '$1$2')
             .replace(/([^。！？])$/g, '$1。');
-            
-        return result;
     }
     
     function handleFile(file) {
@@ -501,82 +488,36 @@
             });
             
             const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-            const duration = audioBuffer.duration;
-            document.getElementById('audioDuration').textContent = formatTime(duration);
+            const totalDuration = audioBuffer.duration;
+            document.getElementById('audioDuration').textContent = formatTime(totalDuration);
             
             const channelData = audioBuffer.getChannelData(0);
             
-            // 关键参数设置
-            const chunkDuration = 30; // 30秒一段，保持上下文连贯
-            const overlapDuration = 5; // 5秒重叠，减少断句错误
+            // 分段参数
+            const chunkDuration = 30; // 30秒一段
+            const overlapDuration = 5; // 5秒重叠
             const sampleRate = 16000;
             const chunkSize = chunkDuration * sampleRate;
-            const overlapSize = overlapDuration * sampleRate;
+            const stepSize = (chunkDuration - overlapDuration) * sampleRate; // 25秒步进
             
-            const totalChunks = Math.ceil(channelData.length / (chunkSize - overlapSize));
-            let segments = []; // 存储带时间戳的段落
+            const totalChunks = Math.ceil((channelData.length - overlapDuration * sampleRate) / stepSize);
+            let allSegments = [];
             
             updateProgress(20, 'AI转写中...');
             
-            if (totalChunks > 1) {
-                for (let i = 0; i < totalChunks; i++) {
-                    const start = Math.max(0, i * (chunkSize - overlapSize));
-                    const end = Math.min((i + 1) * chunkSize, channelData.length);
-                    const chunk = channelData.slice(start, end);
-                    
-                    // 关键修复：使用 'zh' 而非 'chinese'，开启时间戳和上下文
-                    const result = await transcriber(chunk, {
-                        language: 'zh',  // 关键：简体中文
-                        task: 'transcribe',
-                        return_timestamps: true,  // 返回时间戳，有助于断句
-                        chunk_length_s: 30,
-                        stride_length_s: 5,
-                        condition_on_previous_text: true,  // 基于前文生成，提高连贯性
-                        no_repeat_ngram_size: 3,
-                        repetition_penalty: 1.2
-                    });
-                    
-                    // 处理返回结果（可能是数组或对象）
-                    const textChunks = Array.isArray(result.chunks) ? result.chunks : 
-                                      (result.text ? [{text: result.text, timestamp: [i*30, (i+1)*30]}] : []);
-                    
-                    segments.push(...textChunks);
-                    
-                    const progress = 20 + Math.round((i + 1) / totalChunks * 70);
-                    updateProgress(progress, `第${i+1}/${totalChunks}段...`);
-                    
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                }
+            let currentSpeaker = 'A'; // 初始说话人
+            let lastEndTime = 0;
+            
+            for (let i = 0; i < totalChunks; i++) {
+                const startSample = i * stepSize;
+                const endSample = Math.min(startSample + chunkSize, channelData.length);
+                const chunk = channelData.slice(startSample, endSample);
                 
-                // 合并段落并格式化
-                let formattedText = '';
-                let lastText = '';
+                // 计算实际时间（关键修复）
+                const actualStartTime = startSample / sampleRate;
+                const actualEndTime = endSample / sampleRate;
                 
-                for (let seg of segments) {
-                    const text = seg.text || '';
-                    const timestamp = seg.timestamp || [0, 0];
-                    
-                    // 跳过与上一段完全相同的重叠内容
-                    if (text === lastText) continue;
-                    
-                    // 繁体转简体
-                    const simpleText = traditionalToSimple(text);
-                    
-                    // 添加标点
-                    const punctuatedText = addPunctuation(simpleText);
-                    
-                    // 按时间戳换行（每30秒换行，便于阅读）
-                    if (formattedText) formattedText += '\n\n';
-                    formattedText += `[${formatTime(timestamp[0])}] ${punctuatedText}`;
-                    
-                    lastText = text;
-                }
-                
-                displayResult(formattedText, duration);
-                
-            } else {
-                // 短音频直接处理
-                const result = await transcriber(channelData, {
+                const result = await transcriber(chunk, {
                     language: 'zh',
                     task: 'transcribe',
                     return_timestamps: true,
@@ -585,17 +526,64 @@
                     repetition_penalty: 1.2
                 });
                 
-                updateProgress(90, '整理结果...');
+                // 处理结果
+                const chunks = result.chunks || [{text: result.text, timestamp: [0, chunkDuration]}];
                 
-                let text = result.text || '';
-                text = traditionalToSimple(text);
-                text = addPunctuation(text);
+                for (let seg of chunks) {
+                    const segText = seg.text || '';
+                    if (!segText.trim()) continue;
+                    
+                    // 繁体转简体
+                    const simpleText = traditionalToSimple(segText);
+                    
+                    // 基于停顿检测切换说话人（简单启发式）
+                    // 如果与前一段间隔超过3秒，切换说话人
+                    if (actualStartTime - lastEndTime > 3) {
+                        currentSpeaker = currentSpeaker === 'A' ? 'B' : 'A';
+                    }
+                    
+                    allSegments.push({
+                        text: simpleText,
+                        startTime: actualStartTime + (seg.timestamp?.[0] || 0),
+                        endTime: actualStartTime + (seg.timestamp?.[1] || 30),
+                        speaker: `说话人${currentSpeaker}`
+                    });
+                    
+                    lastEndTime = actualEndTime;
+                }
                 
-                displayResult(text, duration);
+                const progress = 20 + Math.round((i + 1) / totalChunks * 70);
+                updateProgress(progress, `第${i+1}/${totalChunks}段...`);
+                
+                await new Promise(resolve => setTimeout(resolve, 100));
             }
             
+            updateProgress(90, '整理格式...');
+            
+            // 格式化输出（按时间排序并去重）
+            let formattedText = '';
+            let lastText = '';
+            
+            for (let seg of allSegments) {
+                // 去重：跳过与上一句完全相同的
+                if (seg.text === lastText) continue;
+                
+                // 跳过包含上一句的重复内容（简化版）
+                if (seg.text.length > 10 && lastText.length > 10 && 
+                    seg.text.includes(lastText.slice(-10))) continue;
+                
+                const punctuatedText = addPunctuation(seg.text);
+                
+                // 格式：[时间] 说话人：内容
+                formattedText += `[${formatTime(seg.startTime)}] ${seg.speaker}：${punctuatedText}\n\n`;
+                
+                lastText = seg.text;
+            }
+            
+            displayResult(formattedText, totalDuration);
+            
             updateProgress(100, '完成');
-            showStatus('✅ 转写完成！已自动转换为简体并添加标点', 'success');
+            showStatus('✅ 转写完成！已转换为简体并标记说话人（基于停顿检测，仅供参考）', 'success');
             
         } catch (error) {
             showStatus(`处理失败：${error.message}`, 'error');
@@ -611,7 +599,7 @@
         const resultBox = document.getElementById('resultBox');
         
         const timestamp = new Date().toLocaleString('zh-CN');
-        const header = `📝 生成时间：${timestamp}\n⏱️ 音频时长：${formatTime(duration)}\n\n`;
+        const header = `📝 生成时间：${timestamp}\n⏱️ 音频时长：${formatTime(duration)}\n💡 说话人标记基于停顿时间自动推测，可能不准确\n\n`;
         
         content.textContent = header + text;
         resultBox.classList.add('show');
