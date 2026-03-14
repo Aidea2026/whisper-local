@@ -316,7 +316,6 @@
     let currentFile = null;
     let isModelLoaded = false;
     
-    // DOM 元素绑定
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
     const statusAlert = document.getElementById('statusAlert');
@@ -354,13 +353,78 @@
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
     
+    // 繁体转简体（简单映射）
+    function traditionalToSimple(text) {
+        const map = {
+            '我們': '我们', '這個': '这个', '這樣': '这样', '學校': '学校',
+            '親近': '亲近', '臉書': '脸书', '這邊': '这边', '應該': '应该',
+            '與': '与', '無': '无', '還有': '还有', '讓': '让', '這': '这',
+            '們': '们', '個': '个', '說': '说', '時': '时', '後': '后',
+            '進': '进', '問': '问', '開': '开', '來': '来', '東': '东',
+            '對': '对', '過': '过', '現': '现', '長': '长', '頭': '头',
+            '話': '话', '點': '点', '發': '发', '覺': '觉', '車': '车',
+            '經': '经', '當': '当', '從': '从', '兩': '两', '會': '会',
+            '什': '什', '麼': '么', '怎': '怎', '麼': '么', '您': '您',
+            '們': '们', '別': '别', '關': '关', '係': '系', '選': '选',
+            '擇': '择', '結': '结', '構': '构', '問': '问', '題': '题',
+            '態': '态', '應': '应', '該': '该', '試': '试', '圖': '图',
+            '書': '书', '畫': '画', '盡': '尽', '量': '量', '見': '见',
+            '識': '识', '證': '证', '認': '认', '識': '识', '語': '语',
+            '調': '调', '節': '节', '務': '务', '務': '务', '場': '场',
+            '館': '馆', '興': '兴', '奮': '奋', '處': '处', '處': '处',
+            '點': '点', '擊': '击', '關': '关', '係': '系', '統': '统',
+            '計': '计', '劃': '划', '則': '则', '剛': '刚', '才': '才',
+            '剛': '刚', '纔': '才', '買': '买', '賣': '卖', '讀': '读',
+            '寫': '写', '聽': '听', '見': '见', '聞': '闻', '聲': '声',
+            '響': '响', '響': '响', '區': '区', '別': '别', '隻': '只',
+            '隻': '只', '隻': '只', '雙': '双', '對': '对', '對': '对',
+            '應': '应', '該': '该', '準': '准', '備': '备', '複': '复',
+            '雜': '杂', '簡': '简', '單': '单', '愛': '爱', '護': '护',
+            '據': '据', '說': '说', '談': '谈', '論': '论', '講': '讲',
+            '話': '话', '語': '语', '言': '言', '記': '记', '錄': '录',
+            '載': '载', '資': '资', '料': '料', '財': '财', '產': '产',
+            '實': '实', '現': '现', '實': '实', '現': '现', '場': '场',
+            '觀': '观', '眾': '众', '眾': '众', '親': '亲', '們': '们',
+            '們': '们', '們': '们', '嗎': '吗', '呢': '呢', '吧': '吧',
+            '啊': '啊', '哦': '哦', '嗯': '嗯', '唉': '唉', '喲': '哟',
+            '餵': '喂', '餵': '喂', '誒': '诶', '吶': '呐', '唄': '呗',
+            '喏': '喏', '喔': '喔', '唷': '唷', '啵': '啵', '啰': '啰',
+            '嘍': '喽', '嘛': '嘛', '嘞': '嘞', '喱': '喱', '喱': '喱'
+        };
+        
+        let result = text;
+        for (let [trad, simp] of Object.entries(map)) {
+            result = result.replace(new RegExp(trad, 'g'), simp);
+        }
+        return result;
+    }
+    
+    // 智能添加标点符号（基于停顿和关键词）
+    function addPunctuation(text) {
+        // 在明显停顿处添加标点
+        let result = text
+            // 在"然后"、"但是"、"所以"前加句号或逗号
+            .replace(/([然后|但是|所以|可是|不过|接着|接下来|最后|首先|其次])/g, '，$1')
+            // 在语气词后加标点
+            .replace(/([吗|呢|吧|啊|哦|嗯])([^，。！？])/g, '$1，$2')
+            // 在"是"、"有"等词后适当断句
+            .replace(/([我们|你们|他们|大家|老师|小朋友])([要|想|觉得|认为])/g, '$1$2')
+            // 长句在"的"后适当断句（避免过度）
+            .replace(/的([^，。！？]{10,})/g, '的，$1')
+            // 去除连续重复的标点
+            .replace(/([，。！？])\1+/g, '$1')
+            // 句末加句号
+            .replace(/([^。！？])$/g, '$1。');
+            
+        return result;
+    }
+    
     function handleFile(file) {
         currentFile = file;
         const sizeMB = (file.size / 1024 / 1024).toFixed(1);
         document.getElementById('fileSize').textContent = sizeMB + ' MB';
         document.getElementById('statsPanel').style.display = 'grid';
         
-        // 更准确的预估：Base模型约 realtime x 0.8, Small约 realtime x 0.4
         const modelSpeed = document.getElementById('modelSelect').value === 'tiny' ? 2 : 
                           document.getElementById('modelSelect').value === 'base' ? 0.8 : 0.4;
         const estimateMin = Math.ceil(sizeMB * modelSpeed);
@@ -370,53 +434,13 @@
         document.getElementById('transcribeBtn').disabled = !isModelLoaded;
     }
     
-    // 智能去重函数（解决复读机问题）
-    function removeDuplicates(text) {
-        const sentences = text.split(/([。！？.!?]\s*)/);
-        let result = [];
-        let lastSentence = '';
-        
-        for (let i = 0; i < sentences.length; i++) {
-            const sentence = sentences[i].trim();
-            if (!sentence) continue;
-            
-            // 如果当前句子与上一句相似度超过80%，跳过
-            if (sentence.length > 5 && lastSentence.length > 5) {
-                const similarity = calculateSimilarity(sentence, lastSentence);
-                if (similarity > 0.8) continue;
-            }
-            
-            // 检查是否重复3次以上
-            if (result.length >= 2) {
-                const prev1 = result[result.length - 1];
-                const prev2 = result[result.length - 2];
-                if (sentence === prev1 && sentence === prev2) continue;
-            }
-            
-            result.push(sentence);
-            lastSentence = sentence;
-        }
-        
-        return result.join('');
-    }
-    
-    // 计算文本相似度
-    function calculateSimilarity(str1, str2) {
-        const len = Math.min(str1.length, str2.length);
-        let same = 0;
-        for (let i = 0; i < len; i++) {
-            if (str1[i] === str2[i]) same++;
-        }
-        return same / Math.max(str1.length, str2.length);
-    }
-    
     window.loadModel = async function() {
         const modelName = document.getElementById('modelSelect').value;
         const btn = document.getElementById('loadModelBtn');
         
         btn.disabled = true;
         btn.innerHTML = '<span class="loading"></span>加载中...';
-        showStatus(`正在下载 ${modelName} 模型（首次约1-3分钟）...`, 'info');
+        showStatus(`正在下载 ${modelName} 模型...`, 'info');
         document.getElementById('progressBox').classList.add('show');
         updateProgress(5, '连接服务器...');
         
@@ -438,14 +462,13 @@
             
             isModelLoaded = true;
             updateProgress(100, '完成');
-            showStatus(`✅ ${modelName} 模型就绪！建议：音质差选Small，音质好选Base`, 'success');
+            showStatus(`✅ ${modelName} 模型就绪！`, 'success');
             document.getElementById('transcribeBtn').disabled = !currentFile;
             
             setTimeout(() => document.getElementById('progressBox').classList.remove('show'), 2000);
             
         } catch (error) {
-            console.error(error);
-            showStatus(`失败：${error.message}。请刷新重试或切换网络`, 'error');
+            showStatus(`失败：${error.message}`, 'error');
         } finally {
             btn.disabled = false;
             btn.innerHTML = '⚡ 加载模型';
@@ -483,15 +506,15 @@
             
             const channelData = audioBuffer.getChannelData(0);
             
-            // 分段参数优化：重叠区域减少断句错误
-            const chunkDuration = 25; // 25秒一段（稍短减少内存压力）
-            const overlapDuration = 2; // 2秒重叠避免断句
+            // 关键参数设置
+            const chunkDuration = 30; // 30秒一段，保持上下文连贯
+            const overlapDuration = 5; // 5秒重叠，减少断句错误
             const sampleRate = 16000;
             const chunkSize = chunkDuration * sampleRate;
             const overlapSize = overlapDuration * sampleRate;
             
             const totalChunks = Math.ceil(channelData.length / (chunkSize - overlapSize));
-            let fullText = [];
+            let segments = []; // 存储带时间戳的段落
             
             updateProgress(20, 'AI转写中...');
             
@@ -501,50 +524,78 @@
                     const end = Math.min((i + 1) * chunkSize, channelData.length);
                     const chunk = channelData.slice(start, end);
                     
+                    // 关键修复：使用 'zh' 而非 'chinese'，开启时间戳和上下文
                     const result = await transcriber(chunk, {
-                        language: 'chinese',
+                        language: 'zh',  // 关键：简体中文
                         task: 'transcribe',
-                        // 关键：添加条件生成抑制重复
+                        return_timestamps: true,  // 返回时间戳，有助于断句
+                        chunk_length_s: 30,
+                        stride_length_s: 5,
+                        condition_on_previous_text: true,  // 基于前文生成，提高连贯性
                         no_repeat_ngram_size: 3,
                         repetition_penalty: 1.2
                     });
                     
-                    // 只保留非重叠部分（除最后一段）
-                    let text = result.text;
-                    if (i > 0 && i < totalChunks - 1) {
-                        // 简单截断：如果下一段开头和这段结尾相似，这里就截断
-                        text = text.slice(0, -30); // 保守截断最后30字符（约2秒）
-                    }
+                    // 处理返回结果（可能是数组或对象）
+                    const textChunks = Array.isArray(result.chunks) ? result.chunks : 
+                                      (result.text ? [{text: result.text, timestamp: [i*30, (i+1)*30]}] : []);
                     
-                    fullText.push(text);
+                    segments.push(...textChunks);
                     
                     const progress = 20 + Math.round((i + 1) / totalChunks * 70);
                     updateProgress(progress, `第${i+1}/${totalChunks}段...`);
                     
-                    // 每段处理完休息一下，避免卡顿
-                    await new Promise(resolve => setTimeout(resolve, 50));
+                    await new Promise(resolve => setTimeout(resolve, 100));
                 }
                 
-                // 合并并去重
-                let rawText = fullText.join(' ');
-                let cleanText = removeDuplicates(rawText);
-                displayResult(cleanText, duration);
+                // 合并段落并格式化
+                let formattedText = '';
+                let lastText = '';
+                
+                for (let seg of segments) {
+                    const text = seg.text || '';
+                    const timestamp = seg.timestamp || [0, 0];
+                    
+                    // 跳过与上一段完全相同的重叠内容
+                    if (text === lastText) continue;
+                    
+                    // 繁体转简体
+                    const simpleText = traditionalToSimple(text);
+                    
+                    // 添加标点
+                    const punctuatedText = addPunctuation(simpleText);
+                    
+                    // 按时间戳换行（每30秒换行，便于阅读）
+                    if (formattedText) formattedText += '\n\n';
+                    formattedText += `[${formatTime(timestamp[0])}] ${punctuatedText}`;
+                    
+                    lastText = text;
+                }
+                
+                displayResult(formattedText, duration);
                 
             } else {
                 // 短音频直接处理
                 const result = await transcriber(channelData, {
-                    language: 'chinese',
+                    language: 'zh',
                     task: 'transcribe',
+                    return_timestamps: true,
+                    condition_on_previous_text: true,
                     no_repeat_ngram_size: 3,
                     repetition_penalty: 1.2
                 });
                 
                 updateProgress(90, '整理结果...');
-                displayResult(result.text, duration);
+                
+                let text = result.text || '';
+                text = traditionalToSimple(text);
+                text = addPunctuation(text);
+                
+                displayResult(text, duration);
             }
             
             updateProgress(100, '完成');
-            showStatus('✅ 转写完成！已自动去除重复内容', 'success');
+            showStatus('✅ 转写完成！已自动转换为简体并添加标点', 'success');
             
         } catch (error) {
             showStatus(`处理失败：${error.message}`, 'error');
@@ -575,8 +626,6 @@
             showStatus('复制失败，请手动复制', 'error');
         });
     };
-    
-    // 不自动加载，让用户手动选择
 </script>
 </body>
 </html>
