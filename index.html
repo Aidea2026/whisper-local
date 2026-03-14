@@ -307,11 +307,8 @@
 <script type="module">
     import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
     
-    // 修复：ModelScope 路径配置（注意大小写）
     env.remoteHost = 'https://www.modelscope.cn';
     env.remotePathTemplate = 'models/{model}/resolve/master/';
-    // 注意：{model} 会被替换为 "Xenova/whisper-base"，所以不需要额外加 xenova/
-    
     env.allowLocalModels = true;
     env.useBrowserCache = true;
     
@@ -319,28 +316,22 @@
     let currentFile = null;
     let isModelLoaded = false;
     
+    // DOM 元素绑定
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
     const statusAlert = document.getElementById('statusAlert');
     
     dropZone.addEventListener('click', () => fileInput.click());
-    
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
         dropZone.classList.add('dragover');
     });
-    
-    dropZone.addEventListener('dragleave', () => {
-        dropZone.classList.remove('dragover');
-    });
-    
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
     dropZone.addEventListener('drop', (e) => {
         e.preventDefault();
         dropZone.classList.remove('dragover');
-        const files = e.dataTransfer.files;
-        if (files.length > 0) handleFile(files[0]);
+        if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
     });
-    
     fileInput.addEventListener('change', (e) => {
         if (e.target.files.length > 0) handleFile(e.target.files[0]);
     });
@@ -366,15 +357,57 @@
     function handleFile(file) {
         currentFile = file;
         const sizeMB = (file.size / 1024 / 1024).toFixed(1);
-        
         document.getElementById('fileSize').textContent = sizeMB + ' MB';
         document.getElementById('statsPanel').style.display = 'grid';
         
-        const estimateMin = Math.ceil(sizeMB * 0.8);
+        // 更准确的预估：Base模型约 realtime x 0.8, Small约 realtime x 0.4
+        const modelSpeed = document.getElementById('modelSelect').value === 'tiny' ? 2 : 
+                          document.getElementById('modelSelect').value === 'base' ? 0.8 : 0.4;
+        const estimateMin = Math.ceil(sizeMB * modelSpeed);
         document.getElementById('estimateTime').textContent = estimateMin + '分钟';
         
-        showStatus(`已选择文件：${file.name}（${sizeMB} MB）`, 'success');
+        showStatus(`已选择：${file.name}（${sizeMB} MB）`, 'success');
         document.getElementById('transcribeBtn').disabled = !isModelLoaded;
+    }
+    
+    // 智能去重函数（解决复读机问题）
+    function removeDuplicates(text) {
+        const sentences = text.split(/([。！？.!?]\s*)/);
+        let result = [];
+        let lastSentence = '';
+        
+        for (let i = 0; i < sentences.length; i++) {
+            const sentence = sentences[i].trim();
+            if (!sentence) continue;
+            
+            // 如果当前句子与上一句相似度超过80%，跳过
+            if (sentence.length > 5 && lastSentence.length > 5) {
+                const similarity = calculateSimilarity(sentence, lastSentence);
+                if (similarity > 0.8) continue;
+            }
+            
+            // 检查是否重复3次以上
+            if (result.length >= 2) {
+                const prev1 = result[result.length - 1];
+                const prev2 = result[result.length - 2];
+                if (sentence === prev1 && sentence === prev2) continue;
+            }
+            
+            result.push(sentence);
+            lastSentence = sentence;
+        }
+        
+        return result.join('');
+    }
+    
+    // 计算文本相似度
+    function calculateSimilarity(str1, str2) {
+        const len = Math.min(str1.length, str2.length);
+        let same = 0;
+        for (let i = 0; i < len; i++) {
+            if (str1[i] === str2[i]) same++;
+        }
+        return same / Math.max(str1.length, str2.length);
     }
     
     window.loadModel = async function() {
@@ -383,12 +416,11 @@
         
         btn.disabled = true;
         btn.innerHTML = '<span class="loading"></span>加载中...';
-        showStatus(`正在连接模型服务器...`, 'info');
+        showStatus(`正在下载 ${modelName} 模型（首次约1-3分钟）...`, 'info');
         document.getElementById('progressBox').classList.add('show');
-        updateProgress(10, '准备下载...');
+        updateProgress(5, '连接服务器...');
         
         try {
-            // 添加延迟，避免请求过快被拒绝
             await new Promise(resolve => setTimeout(resolve, 500));
             
             transcriber = await pipeline(
@@ -398,7 +430,7 @@
                     progress_callback: (progress) => {
                         if (progress.status === 'progress') {
                             const pct = Math.round(progress.progress * 100);
-                            updateProgress(10 + pct * 0.8, `下载中... ${pct}%`);
+                            updateProgress(5 + pct * 0.9, `下载中... ${pct}%`);
                         }
                     }
                 }
@@ -406,16 +438,14 @@
             
             isModelLoaded = true;
             updateProgress(100, '完成');
-            showStatus(`✅ ${modelName} 模型已就绪！`, 'success');
+            showStatus(`✅ ${modelName} 模型就绪！建议：音质差选Small，音质好选Base`, 'success');
             document.getElementById('transcribeBtn').disabled = !currentFile;
             
-            setTimeout(() => {
-                document.getElementById('progressBox').classList.remove('show');
-            }, 2000);
+            setTimeout(() => document.getElementById('progressBox').classList.remove('show'), 2000);
             
         } catch (error) {
             console.error(error);
-            showStatus(`加载失败：${error.message}。建议：①刷新重试 ②换Tiny模型 ③使用本地Python版`, 'error');
+            showStatus(`失败：${error.message}。请刷新重试或切换网络`, 'error');
         } finally {
             btn.disabled = false;
             btn.innerHTML = '⚡ 加载模型';
@@ -442,7 +472,7 @@
             updateProgress(5, '读取文件...');
             const arrayBuffer = await currentFile.arrayBuffer();
             
-            updateProgress(15, '解码音频...');
+            updateProgress(10, '解码音频...');
             const audioContext = new (window.AudioContext || window.webkitAudioContext)({
                 sampleRate: 16000
             });
@@ -453,36 +483,60 @@
             
             const channelData = audioBuffer.getChannelData(0);
             
-            updateProgress(30, 'AI转写中...');
+            // 分段参数优化：重叠区域减少断句错误
+            const chunkDuration = 25; // 25秒一段（稍短减少内存压力）
+            const overlapDuration = 2; // 2秒重叠避免断句
+            const sampleRate = 16000;
+            const chunkSize = chunkDuration * sampleRate;
+            const overlapSize = overlapDuration * sampleRate;
             
-            const chunkSize = 30 * 16000;
-            const totalChunks = Math.ceil(channelData.length / chunkSize);
+            const totalChunks = Math.ceil(channelData.length / (chunkSize - overlapSize));
             let fullText = [];
+            
+            updateProgress(20, 'AI转写中...');
             
             if (totalChunks > 1) {
                 for (let i = 0; i < totalChunks; i++) {
-                    const start = i * chunkSize;
+                    const start = Math.max(0, i * (chunkSize - overlapSize));
                     const end = Math.min((i + 1) * chunkSize, channelData.length);
                     const chunk = channelData.slice(start, end);
                     
                     const result = await transcriber(chunk, {
                         language: 'chinese',
-                        task: 'transcribe'
+                        task: 'transcribe',
+                        // 关键：添加条件生成抑制重复
+                        no_repeat_ngram_size: 3,
+                        repetition_penalty: 1.2
                     });
                     
-                    fullText.push(result.text);
+                    // 只保留非重叠部分（除最后一段）
+                    let text = result.text;
+                    if (i > 0 && i < totalChunks - 1) {
+                        // 简单截断：如果下一段开头和这段结尾相似，这里就截断
+                        text = text.slice(0, -30); // 保守截断最后30字符（约2秒）
+                    }
                     
-                    const progress = 30 + Math.round((i + 1) / totalChunks * 60);
+                    fullText.push(text);
+                    
+                    const progress = 20 + Math.round((i + 1) / totalChunks * 70);
                     updateProgress(progress, `第${i+1}/${totalChunks}段...`);
                     
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                    // 每段处理完休息一下，避免卡顿
+                    await new Promise(resolve => setTimeout(resolve, 50));
                 }
                 
-                displayResult(fullText.join(' '), duration);
+                // 合并并去重
+                let rawText = fullText.join(' ');
+                let cleanText = removeDuplicates(rawText);
+                displayResult(cleanText, duration);
+                
             } else {
+                // 短音频直接处理
                 const result = await transcriber(channelData, {
                     language: 'chinese',
-                    task: 'transcribe'
+                    task: 'transcribe',
+                    no_repeat_ngram_size: 3,
+                    repetition_penalty: 1.2
                 });
                 
                 updateProgress(90, '整理结果...');
@@ -490,10 +544,11 @@
             }
             
             updateProgress(100, '完成');
-            showStatus('✅ 转写完成！', 'success');
+            showStatus('✅ 转写完成！已自动去除重复内容', 'success');
             
         } catch (error) {
             showStatus(`处理失败：${error.message}`, 'error');
+            console.error(error);
         } finally {
             btn.disabled = false;
             btn.innerHTML = '🚀 开始转写';
@@ -505,7 +560,7 @@
         const resultBox = document.getElementById('resultBox');
         
         const timestamp = new Date().toLocaleString('zh-CN');
-        const header = `📝 转写时间：${timestamp}\n⏱️ 时长：${formatTime(duration)}\n\n`;
+        const header = `📝 生成时间：${timestamp}\n⏱️ 音频时长：${formatTime(duration)}\n\n`;
         
         content.textContent = header + text;
         resultBox.classList.add('show');
@@ -515,14 +570,13 @@
     window.copyResult = function() {
         const text = document.getElementById('resultContent').textContent;
         navigator.clipboard.writeText(text).then(() => {
-            showStatus('已复制！', 'success');
+            showStatus('已复制到剪贴板！', 'success');
         }).catch(() => {
             showStatus('复制失败，请手动复制', 'error');
         });
     };
     
-    // 页面加载后等待用户手动点击加载（避免自动加载失败）
-    // 不自动加载，让用户手动选择模型后点击加载
+    // 不自动加载，让用户手动选择
 </script>
 </body>
 </html>
