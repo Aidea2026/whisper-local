@@ -1,9 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>本地语音转文字工具</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px 30px;
+            text-align: center;
+        }
+        .header h1 { font-size: 32px; margin-bottom: 10px; }
+        .header p { opacity: 0.9; font-size: 16px; }
+        .content { padding: 40px 30px; }
+        
+        .alert {
+            padding: 15px 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-size: 15px;
+            display: none;
+        }
+        .alert.show { display: block; }
+        .alert.info { background: #dbeafe; color: #1e40af; border-left: 4px solid #3b82f6; }
+        .alert.success { background: #d1fae5; color: #065f46; border-left: 4px solid #10b981; }
+        .alert.error { background: #fee2e2; color: #991b1b; border-left: 4px solid #ef4444; }
+        .alert.warning { background: #fef3c7; color: #92400e; border-left: 4px solid #f59e0b; }
+        
+        .upload-box {
+            border: 3px dashed #cbd5e1;
+            border-radius: 15px;
+            padding: 60px 40px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            background: #f8fafc;
+            margin-bottom: 30px;
+        }
+        .upload-box:hover {
+            border-color: #667eea;
+            background: #eff6ff;
+            transform: translateY(-2px);
+        }
+        .upload-box.dragover {
+            border-color: #667eea;
+            background: #dbeafe;
+            transform: scale(1.02);
+        }
+        .upload-icon { font-size: 64px; margin-bottom: 15px; }
+        .upload-text { font-size: 18px; color: #374151; font-weight: 600; }
+        .upload-hint { font-size: 14px; color: #6b7280; margin-top: 8px; }
+        input[type="file"] { display: none; }
+        
+        .control-panel {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        @media (max-width: 600px) { .control-panel { grid-template-columns: 1fr; } }
+        
+        .form-group label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 8px;
+        }
+        select, button {
+            width: 100%;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 2px solid #e5e7eb;
+            font-size: 16px;
+            outline: none;
+            transition: all 0.2s;
+        }
+        select:focus { border-color: #667eea; }
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            height: 100%;
+            min-height: 48px;
+        }
+        button:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+        }
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        
+        .progress-box {
+            background: #f3f4f6;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            display: none;
+        }
+        .progress-box.show { display: block; }
+        .progress-bar-bg {
+            height: 12px;
+            background: #e5e7eb;
+            border-radius: 6px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            width: 0%;
+            transition: width 0.3s ease;
+            border-radius: 6px;
+        }
+        .progress-text {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 14px;
+            color: #6b7280;
+        }
+        
+        .result-box {
+            background: #f9fafb;
+            border: 2px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 25px;
+            margin-top: 25px;
+            display: none;
+        }
+        .result-box.show { display: block; }
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .result-content {
+            white-space: pre-wrap;
+            line-height: 1.8;
+            color: #1f2937;
+            font-size: 16px;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+        .copy-btn {
+            background: #10b981;
+            padding: 8px 16px;
+            font-size: 14px;
+            width: auto;
+        }
+        .copy-btn:hover { background: #059669; }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: #f3f4f6;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #667eea;
+        }
+        .stat-label {
+            font-size: 13px;
+            color: #6b7280;
+            margin-top: 5px;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #ffffff;
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .tips {
+            background: #fef3c7;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 14px;
+            color: #92400e;
+        }
+        .tips strong { color: #78350f; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎙️ 本地语音转文字</h1>
+            <p>基于 OpenAI Whisper | 浏览器本地处理 | 视频不上传</p>
+        </div>
+        
+        <div class="content">
+            <div class="alert info show" id="statusAlert">
+                欢迎使用！首次使用需要下载 AI 模型（约 150MB），请耐心等待。
+            </div>
+            
+            <div class="upload-box" id="dropZone">
+                <div class="upload-icon">📁</div>
+                <div class="upload-text">点击选择或拖拽文件到此处</div>
+                <div class="upload-hint">支持 MP4、MP3、WAV、M4A、WEBM、MOV 格式</div>
+                <input type="file" id="fileInput" accept="video/*,audio/*">
+            </div>
+            
+            <div class="stats" id="statsPanel" style="display: none;">
+                <div class="stat-card">
+                    <div class="stat-value" id="fileSize">-</div>
+                    <div class="stat-label">文件大小</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="audioDuration">-</div>
+                    <div class="stat-label">音频时长</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="estimateTime">-</div>
+                    <div class="stat-label">预估耗时</div>
+                </div>
+            </div>
+            
+            <div class="control-panel">
+                <div class="form-group">
+                    <label>选择模型（精度越高越慢）</label>
+                    <select id="modelSelect">
+                        <option value="tiny">Tiny - 极速模式（39MB，适合测试）</option>
+                        <option value="base" selected>Base - 平衡模式（74MB，推荐）</option>
+                        <option value="small">Small - 高精度（466MB，较慢）</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>&nbsp;</label>
+                    <button onclick="loadModel()" id="loadModelBtn">
+                        ⚡ 加载模型
+                    </button>
+                </div>
+            </div>
+            
+            <div class="progress-box" id="progressBox">
+                <div class="progress-bar-bg">
+                    <div class="progress-bar" id="progressBar"></div>
+                </div>
+                <div class="progress-text">
+                    <span id="progressStatus">准备中...</span>
+                    <span id="progressPercent">0%</span>
+                </div>
+            </div>
+            
+            <button onclick="startTranscribe()" id="transcribeBtn" disabled style="margin-bottom: 20px;">
+                🚀 开始转写
+            </button>
+            
+            <div class="result-box" id="resultBox">
+                <div class="result-header">
+                    <h3 style="font-size: 18px; color: #111827;">📋 转写结果</h3>
+                    <button class="copy-btn" onclick="copyResult()">复制文字</button>
+                </div>
+                <div class="result-content" id="resultContent"></div>
+            </div>
+            
+            <div class="tips">
+                <strong>💡 使用提示：</strong><br>
+                1. 首次使用需下载模型，请保持页面打开<br>
+                2. 30分钟视频约需 20-30 分钟处理（Base模型）<br>
+                3. 建议使用 Chrome/Edge 浏览器以获得最佳性能<br>
+                4. 处理过程中请勿关闭或刷新页面
+            </div>
+        </div>
+    </div>
+
 <script type="module">
     import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
-// 找到原来的 env 配置，只替换这三行：
-env.remoteHost = 'https://cdn.jsdelivr.net';
-env.remotePathTemplate = 'npm/@xenova/transformers@2.17.2/models/{model}/';
-env.allowLocalModels = false;  // 添加这一行
+    
+    env.remoteHost = 'https://www.modelscope.cn';
+    env.remotePathTemplate = 'models/{model}/resolve/master/';
+    env.allowLocalModels = true;
     env.useBrowserCache = true;
     
     let transcriber = null;
@@ -41,30 +347,47 @@ env.allowLocalModels = false;  // 添加这一行
     }
     
     function formatTime(seconds) {
-        if (!seconds || seconds === 0) return '-';
+        if (!seconds || seconds === 0) return '0:00';
         const mins = Math.floor(seconds / 60);
         const secs = Math.floor(seconds % 60);
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
     
-    // 繁体转简体（简化版）
+    // 完整的繁体转简体映射表（覆盖常用字）
     function traditionalToSimple(text) {
         const map = {
             '變': '变', '馬': '马', '時': '时', '進': '进', '學': '学', '說': '说', '話': '话',
-            '們': '们', '這': '这', '個': '个', '來': '来', '問': '问', '題': '题', '開': '开',
-            '長': '长', '東': '东', '車': '车', '書': '书', '畫': '画', '見': '见', '識': '识',
-            '認': '认', '語': '语', '調': '调', '節': '节', '務': '务', '場': '场', '點': '点',
+            '們': '们', '這': '这', '個': '个', '來': '来', '麼': '么', '麼': '么', '們': '们',
+            '員': '员', '興': '兴', '奮': '奋', '頭': '头', '們': '们', '應': '应', '該': '该',
+            '問': '问', '題': '题', '開': '开', '來': '来', '長': '长', '東': '东', '車': '车',
+            '書': '书', '畫': '画', '盡': '尽', '見': '见', '識': '识', '認': '认', '語': '语',
+            '調': '调', '節': '节', '務': '务', '場': '场', '館': '馆', '處': '处', '點': '点',
             '擊': '击', '統': '统', '計': '计', '劃': '划', '則': '则', '剛': '刚', '纔': '才',
             '買': '买', '賣': '卖', '讀': '读', '寫': '写', '聽': '听', '聞': '闻', '聲': '声',
             '響': '响', '區': '区', '別': '别', '隻': '只', '雙': '双', '對': '对', '備': '备',
             '複': '复', '雜': '杂', '簡': '简', '單': '单', '愛': '爱', '護': '护', '據': '据',
             '談': '谈', '論': '论', '講': '讲', '記': '记', '錄': '录', '載': '载', '資': '资',
-            '料': '料', '財': '财', '產': '产', '實': '实', '現': '现', '觀': '观', '眾': '众',
-            '親': '亲', '幫': '帮', '請': '请', '沒': '没', '還': '还', '讓': '让', '過': '过',
-            '發': '发', '覺': '觉', '經': '经', '當': '当', '從': '从', '兩': '两', '會': '会',
-            '您': '您', '關': '关', '係': '系', '選': '选', '擇': '择', '結': '结', '構': '构',
-            '態': '态', '圖': '图', '為': '为', '無': '无', '與': '与', '轉': '转', '換': '换',
-            '顯': '显', '示': '示', '後': '后', '並': '并', '於': '于', '產': '产', '種': '种'
+            '料': '料', '財': '财', '產': '产', '實': '实', '現': '现', '場': '场', '觀': '观',
+            '眾': '众', '親': '亲', '幫': '帮', '請': '请', '問': '问', '沒': '没', '還': '还',
+            '讓': '让', '過': '过', '發': '发', '覺': '觉', '經': '经', '當': '当', '從': '从',
+            '兩': '两', '會': '会', '什': '什', '您': '您', '別': '别', '關': '关', '係': '系',
+            '選': '选', '擇': '择', '結': '结', '構': '构', '態': '态', '圖': '图', '盡': '尽',
+            '為': '为', '無': '无', '與': '与', '寫': '写', '轉': '转', '換': '换', '顯': '显',
+            '示': '示', '後': '后', '並': '并', '於': '于', '產': '产', '種': '种', '義': '义',
+            '務': '务', '報': '报', '紙': '纸', '筆': '笔', '畫': '画', '鍵': '键', '盤': '盘',
+            '腦': '脑', '電': '电', '視': '视', '聽': '听', '眾': '众', '響': '响', '氣': '气',
+            '順': '顺', '風': '风', '電': '电', '車': '车', '馬': '马', '飛': '飞', '機': '机',
+            '時': '时', '間': '间', '鐘': '钟', '錶': '表', '帶': '带', '來': '来', '進': '进',
+            '過': '过', '遠': '远', '離': '离', '開': '开', '關': '关', '門': '门', '們': '们',
+            '誰': '谁', '為': '为', '什': '什', '麼': '么', '這': '这', '裡': '里', '裡': '里',
+            '裏': '里', '國': '国', '內': '内', '國': '国', '際': '际', '關': '关', '係': '系',
+            '統': '统', '總': '总', '結': '结', '給': '给', '給': '给', '紅': '红', '綠': '绿',
+            '藍': '蓝', '黃': '黄', '黑': '黑', '白': '白', '色': '色', '條': '条', '紋': '纹',
+            '動': '动', '態': '态', '畫': '画', '面': '面', '圖': '图', '片': '片', '資': '资',
+            '訊': '讯', '號': '号', '碼': '码', '號': '号', '稱': '称', '謂': '谓', '語': '语',
+            '言': '言', '話': '话', '說': '说', '講': '讲', '談': '谈', '論': '论', '語': '语',
+            '調': '调', '節': '节', '約': '约', '級': '级', '極': '极', '樂': '乐', '觀': '观',
+            '眾': '众', '聽': '听', '聞': '闻', '聲': '声', '響': '响', '氣': '气', '順': '顺'
         };
         
         let result = text;
@@ -74,11 +397,12 @@ env.allowLocalModels = false;  // 添加这一行
         return result;
     }
     
-    // 添加标点
+    // 智能添加标点
     function addPunctuation(text) {
         return text
             .replace(/([然后|但是|所以|可是|不过|接着|接下来|最后|首先|其次|另外|而且])/g, '，$1')
             .replace(/([吗|呢|吧|啊|哦|嗯])([^，。！？])/g, '$1，$2')
+            .replace(/([我们|你们|他们|大家|老师|小朋友|同学|朋友])([要|想|觉得|认为|希望])/g, '$1$2')
             .replace(/([^。！？])$/g, '$1。');
     }
     
@@ -103,14 +427,13 @@ env.allowLocalModels = false;  // 添加这一行
         
         btn.disabled = true;
         btn.innerHTML = '<span class="loading"></span>加载中...';
-        showStatus(`正在从 jsDelivr 下载 ${modelName} 模型...`, 'info');
+        showStatus(`正在下载 ${modelName} 模型...`, 'info');
         document.getElementById('progressBox').classList.add('show');
-        updateProgress(10, '连接 CDN...');
+        updateProgress(5, '连接服务器...');
         
         try {
             await new Promise(resolve => setTimeout(resolve, 500));
             
-            // 关键：使用 jsDelivr 完整路径，绕过当前域名
             transcriber = await pipeline(
                 'automatic-speech-recognition',
                 `Xenova/whisper-${modelName}`,
@@ -118,7 +441,7 @@ env.allowLocalModels = false;  // 添加这一行
                     progress_callback: (progress) => {
                         if (progress.status === 'progress') {
                             const pct = Math.round(progress.progress * 100);
-                            updateProgress(10 + pct * 0.8, `下载中... ${pct}%`);
+                            updateProgress(5 + pct * 0.9, `下载中... ${pct}%`);
                         }
                     }
                 }
@@ -126,14 +449,13 @@ env.allowLocalModels = false;  // 添加这一行
             
             isModelLoaded = true;
             updateProgress(100, '完成');
-            showStatus(`✅ ${modelName} 模型已就绪！`, 'success');
+            showStatus(`✅ ${modelName} 模型就绪！`, 'success');
             document.getElementById('transcribeBtn').disabled = !currentFile;
             
             setTimeout(() => document.getElementById('progressBox').classList.remove('show'), 2000);
             
         } catch (error) {
-            console.error('模型加载错误:', error);
-            showStatus(`加载失败：${error.message}。请刷新重试或切换网络`, 'error');
+            showStatus(`失败：${error.message}`, 'error');
         } finally {
             btn.disabled = false;
             btn.innerHTML = '⚡ 加载模型';
@@ -160,7 +482,7 @@ env.allowLocalModels = false;  // 添加这一行
             updateProgress(5, '读取文件...');
             const arrayBuffer = await currentFile.arrayBuffer();
             
-            updateProgress(15, '解码音频...');
+            updateProgress(10, '解码音频...');
             const audioContext = new (window.AudioContext || window.webkitAudioContext)({
                 sampleRate: 16000
             });
@@ -171,26 +493,29 @@ env.allowLocalModels = false;  // 添加这一行
             
             const channelData = audioBuffer.getChannelData(0);
             
-            // 分段处理
-            const chunkDuration = 30;
-            const overlapDuration = 5;
+            // 分段参数
+            const chunkDuration = 30; // 30秒一段
+            const overlapDuration = 5; // 5秒重叠
             const sampleRate = 16000;
             const chunkSize = chunkDuration * sampleRate;
-            const stepSize = (chunkDuration - overlapDuration) * sampleRate;
+            const stepSize = (chunkDuration - overlapDuration) * sampleRate; // 25秒步进
             
             const totalChunks = Math.ceil((channelData.length - overlapDuration * sampleRate) / stepSize);
             let allSegments = [];
-            let currentSpeaker = 'A';
-            let lastEndTime = 0;
             
             updateProgress(20, 'AI转写中...');
+            
+            let currentSpeaker = 'A'; // 初始说话人
+            let lastEndTime = 0;
             
             for (let i = 0; i < totalChunks; i++) {
                 const startSample = i * stepSize;
                 const endSample = Math.min(startSample + chunkSize, channelData.length);
                 const chunk = channelData.slice(startSample, endSample);
                 
+                // 计算实际时间（关键修复）
                 const actualStartTime = startSample / sampleRate;
+                const actualEndTime = endSample / sampleRate;
                 
                 const result = await transcriber(chunk, {
                     language: 'zh',
@@ -201,14 +526,18 @@ env.allowLocalModels = false;  // 添加这一行
                     repetition_penalty: 1.2
                 });
                 
-                const chunks = result.chunks || [{text: result.text, timestamp: [0, 30]}];
+                // 处理结果
+                const chunks = result.chunks || [{text: result.text, timestamp: [0, chunkDuration]}];
                 
                 for (let seg of chunks) {
                     const segText = seg.text || '';
                     if (!segText.trim()) continue;
                     
+                    // 繁体转简体
                     const simpleText = traditionalToSimple(segText);
                     
+                    // 基于停顿检测切换说话人（简单启发式）
+                    // 如果与前一段间隔超过3秒，切换说话人
                     if (actualStartTime - lastEndTime > 3) {
                         currentSpeaker = currentSpeaker === 'A' ? 'B' : 'A';
                     }
@@ -220,7 +549,7 @@ env.allowLocalModels = false;  // 添加这一行
                         speaker: `说话人${currentSpeaker}`
                     });
                     
-                    lastEndTime = actualStartTime + (seg.timestamp?.[1] || 30);
+                    lastEndTime = actualEndTime;
                 }
                 
                 const progress = 20 + Math.round((i + 1) / totalChunks * 70);
@@ -229,25 +558,32 @@ env.allowLocalModels = false;  // 添加这一行
                 await new Promise(resolve => setTimeout(resolve, 100));
             }
             
-            updateProgress(90, '整理结果...');
+            updateProgress(90, '整理格式...');
             
+            // 格式化输出（按时间排序并去重）
             let formattedText = '';
             let lastText = '';
             
             for (let seg of allSegments) {
+                // 去重：跳过与上一句完全相同的
                 if (seg.text === lastText) continue;
+                
+                // 跳过包含上一句的重复内容（简化版）
                 if (seg.text.length > 10 && lastText.length > 10 && 
                     seg.text.includes(lastText.slice(-10))) continue;
                 
                 const punctuatedText = addPunctuation(seg.text);
+                
+                // 格式：[时间] 说话人：内容
                 formattedText += `[${formatTime(seg.startTime)}] ${seg.speaker}：${punctuatedText}\n\n`;
+                
                 lastText = seg.text;
             }
             
             displayResult(formattedText, totalDuration);
             
             updateProgress(100, '完成');
-            showStatus('✅ 转写完成！', 'success');
+            showStatus('✅ 转写完成！已转换为简体并标记说话人（基于停顿检测，仅供参考）', 'success');
             
         } catch (error) {
             showStatus(`处理失败：${error.message}`, 'error');
@@ -263,7 +599,7 @@ env.allowLocalModels = false;  // 添加这一行
         const resultBox = document.getElementById('resultBox');
         
         const timestamp = new Date().toLocaleString('zh-CN');
-        const header = `📝 生成时间：${timestamp}\n⏱️ 音频时长：${formatTime(duration)}\n💡 说话人标记基于停顿自动推测\n\n`;
+        const header = `📝 生成时间：${timestamp}\n⏱️ 音频时长：${formatTime(duration)}\n💡 说话人标记基于停顿时间自动推测，可能不准确\n\n`;
         
         content.textContent = header + text;
         resultBox.classList.add('show');
@@ -279,3 +615,5 @@ env.allowLocalModels = false;  // 添加这一行
         });
     };
 </script>
+</body>
+</html>
