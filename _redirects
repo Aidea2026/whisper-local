@@ -1,0 +1,8 @@
+# 确保模型加载请求不被 SPA 回退影响
+/models/*  /models/:splat  200
+
+# API 请求直通
+/api/*  /api/:splat  200
+
+# 其他所有请求走 SPA 回退（支持前端路由）
+/*  /index.html  200
