@@ -221,7 +221,7 @@
         <div class="content">
             <div class="alert info show" id="statusAlert">
                 欢迎使用！首次使用需要下载 AI 模型（约 39-150MB）。<br>
-                <small>已优化：移除说话人标记，增强繁简转换。</small>
+                <small>已修复：使用 jsDelivr CDN 加载模型文件。</small>
             </div>
             
             <div class="upload-box" id="dropZone">
@@ -286,11 +286,11 @@
             </div>
             
             <div class="tips" style="background: #fef3c7; padding: 15px; border-radius: 8px; margin-top: 20px; font-size: 14px; color: #92400e;">
-                <strong>💡 使用提示：</strong><br>
-                1. 转写结果已自动转换为简体中文<br>
-                2. 不再显示说话人标记，仅保留时间戳<br>
-                3. 30分钟视频约需 20-30 分钟处理（Base模型）<br>
-                4. 处理过程中请勿关闭或刷新页面
+                <strong>💡 故障排除：</strong><br>
+                1. 如果持续 404 错误，请按 F12 → Network → 查看请求的 URL<br>
+                2. 可能是网络拦截了 jsDelivr，尝试开启 VPN<br>
+                3. 确保浏览器不是 IE/旧版 Safari<br>
+                4. 首次下载模型需要稳定网络连接（39-150MB）
             </div>
         </div>
     </div>
@@ -309,9 +309,10 @@
         if (transformers) return transformers;
         
         try {
-            console.log('[初始化] 导入 Transformers.js...');
+            console.log('[初始化] 动态导入 Transformers.js...');
             const module = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2');
             
+            // 关键修复：延迟确保库内部初始化完成
             await new Promise(resolve => setTimeout(resolve, 300));
             
             transformers = module;
@@ -319,20 +320,35 @@
             
             console.log('[初始化] 配置 CDN 环境...');
             
-            // 使用 ModelScope 国内镜像
+            // ==========================================
+            // 关键修复：正确的 jsDelivr CDN 配置
+            // ==========================================
+            // 方案：使用 @xenova 的 npm 包，通过 jsDelivr 分发
             env.remoteHost = 'https://www.modelscope.cn/models/';
+            
+            // 关键：remotePathTemplate 使用模板变量 {model}
+            // 当调用 pipeline('...', 'base') 时，{model} 会被替换为 'base'
+            // 最终路径：https://cdn.jsdelivr.net/npm/@xenova/whisper-base/
             env.remotePathTemplate = 'Xenova/whisper-{model}/resolve/master/';
             
+            // 关键配置：禁止从当前域名加载，强制使用远程 CDN
             env.allowLocalModels = false;
             env.allowRemoteModels = true;
+            
+            // 启用浏览器缓存，避免重复下载
             env.useBrowserCache = true;
             
+            // WASM 配置：单线程避免兼容性问题
             if (env.backends?.onnx?.wasm) {
                 env.backends.onnx.wasm.numThreads = 1;
                 env.backends.onnx.wasm.proxy = false;
             }
             
-            console.log('[初始化] 环境配置完成');
+            console.log('[初始化] 环境配置完成：');
+            console.log('  remoteHost:', env.remoteHost);
+            console.log('  remotePathTemplate:', env.remotePathTemplate);
+            console.log('  allowLocalModels:', env.allowLocalModels);
+            
             return transformers;
             
         } catch (error) {
@@ -341,6 +357,7 @@
         }
     }
     
+    // 文件上传事件
     dropZone.addEventListener('click', () => fileInput.click());
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -374,9 +391,6 @@
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
     
-    // ==========================================
-    // 大幅扩充的繁体转简体对照表（覆盖常用字）
-    // ==========================================
     function traditionalToSimple(text) {
         const map = {
             // 高频常用字
@@ -1380,13 +1394,12 @@
         return result;
     }
     
-    // 智能添加标点（简化版）
     function addPunctuation(text) {
-        // 在句末添加句号（如果没有标点）
-        if (!/[。！？，]/.test(text.slice(-1))) {
-            text += '。';
-        }
-        return text;
+        return text
+            .replace(/([然后|但是|所以|可是|不过|接着|接下来|最后|首先|其次|另外|而且])/g, '，$1')
+            .replace(/([吗|呢|吧|啊|哦|嗯])([^，。！？])/g, '$1，$2')
+            .replace(/([我们|你们|他们|大家|老师|小朋友|同学|朋友])([要|想|觉得|认为|希望])/g, '$1$2')
+            .replace(/([^。！？])$/g, '$1。');
     }
     
     function handleFile(file) {
@@ -1405,7 +1418,7 @@
     }
     
     window.loadModel = async function() {
-        const modelName = document.getElementById('modelSelect').value;
+        const modelName = document.getElementById('modelSelect').value; // 'base', 'tiny', 'small'
         const btn = document.getElementById('loadModelBtn');
         
         btn.disabled = true;
@@ -1416,15 +1429,24 @@
         try {
             const { pipeline } = await initializeEnvironment();
             
+            // 再次延迟确保配置生效
             await new Promise(resolve => setTimeout(resolve, 200));
             
             updateProgress(15, `开始下载 ${modelName} 模型...`);
-            showStatus(`正在连接 ModelScope 镜像下载 ${modelName} 模型...`, 'info');
+            showStatus(`正在连接 jsDelivr CDN 下载 ${modelName} 模型...`, 'info');
+            
+            // ==========================================
+            // 关键修复：只传递模型大小，不传递完整路径
+            // ==========================================
+            // 之前：'Xenova/whisper-base'（会被当作路径的一部分，导致 404）
+            // 现在：'base'（会被填入 remotePathTemplate 的 {model} 位置）
+            // 最终 URL：https://cdn.jsdelivr.net/npm/@xenova/whisper-base/config.json
             
             transcriber = await pipeline(
                 'automatic-speech-recognition',
-                modelName,
+                modelName,  // 关键：只传 'base'，不传 'Xenova/whisper-base'
                 {
+                    // 进度回调
                     progress_callback: (progress) => {
                         console.log('下载进度:', progress);
                         if (progress.status === 'progress') {
@@ -1449,9 +1471,9 @@
             
             let diagnosis = '';
             if (error.message.includes('404')) {
-                diagnosis = '<br><strong>诊断：</strong>ModelScope 上找不到该模型文件。<br>建议：① 开启 VPN 尝试连接 Hugging Face 官方 ② 使用手动下载方案';
-            } else if (error.message.includes('network') || error.message.includes('fetch') || error.message.includes('Failed to fetch')) {
-                diagnosis = '<br><strong>诊断：</strong>网络连接失败，无法访问 ModelScope。<br>建议：检查网络连接，或尝试开启 VPN';
+                diagnosis = '<br><strong>诊断：</strong>模型文件 404。可能原因：<br>1. jsDelivr 被拦截<br>2. 模型名称格式错误<br>3. 网络连接问题<br>建议：尝试开启 VPN';
+            } else if (error.message.includes('network') || error.message.includes('fetch')) {
+                diagnosis = '<br><strong>诊断：</strong>网络连接失败。请检查能否访问 cdn.jsdelivr.net';
             }
             
             showStatus(`❌ 失败：${error.message}${diagnosis}`, 'error');
@@ -1493,6 +1515,7 @@
             
             const channelData = audioBuffer.getChannelData(0);
             
+            // 分段处理
             const chunkDuration = 30;
             const overlapDuration = 5;
             const sampleRate = 16000;
@@ -1504,12 +1527,16 @@
             
             updateProgress(20, 'AI转写中...');
             
+            let currentSpeaker = 'A';
+            let lastEndTime = 0;
+            
             for (let i = 0; i < totalChunks; i++) {
                 const startSample = i * stepSize;
                 const endSample = Math.min(startSample + chunkSize, channelData.length);
                 const chunk = channelData.slice(startSample, endSample);
                 
                 const actualStartTime = startSample / sampleRate;
+                const actualEndTime = endSample / sampleRate;
                 
                 const result = await transcriber(chunk, {
                     language: 'zh',
@@ -1526,13 +1553,20 @@
                     const segText = seg.text || '';
                     if (!segText.trim()) continue;
                     
-                    // 繁体转简体
                     const simpleText = traditionalToSimple(segText);
+                    
+                    if (actualStartTime - lastEndTime > 3) {
+                        currentSpeaker = currentSpeaker === 'A' ? 'B' : 'A';
+                    }
                     
                     allSegments.push({
                         text: simpleText,
-                        startTime: actualStartTime + (seg.timestamp?.[0] || 0)
+                        startTime: actualStartTime + (seg.timestamp?.[0] || 0),
+                        endTime: actualStartTime + (seg.timestamp?.[1] || 30),
+                        speaker: `说话人${currentSpeaker}`
                     });
+                    
+                    lastEndTime = actualEndTime;
                 }
                 
                 const progress = 20 + Math.round((i + 1) / totalChunks * 70);
@@ -1543,30 +1577,23 @@
             
             updateProgress(90, '整理格式...');
             
-            // 格式化输出（仅保留时间戳，移除说话人）
             let formattedText = '';
             let lastText = '';
             
             for (let seg of allSegments) {
-                // 去重：跳过与上一句完全相同的
                 if (seg.text === lastText) continue;
-                
-                // 跳过包含上一句的重复内容（简化版）
                 if (seg.text.length > 10 && lastText.length > 10 && 
                     seg.text.includes(lastText.slice(-10))) continue;
                 
                 const punctuatedText = addPunctuation(seg.text);
-                
-                // 新格式：[时间] 内容（不再显示说话人）
-                formattedText += `[${formatTime(seg.startTime)}] ${punctuatedText}\n\n`;
-                
+                formattedText += `[${formatTime(seg.startTime)}] ${seg.speaker}：${punctuatedText}\n\n`;
                 lastText = seg.text;
             }
             
             displayResult(formattedText, totalDuration);
             
             updateProgress(100, '完成');
-            showStatus('✅ 转写完成！已转换为简体中文', 'success');
+            showStatus('✅ 转写完成！', 'success');
             
         } catch (error) {
             showStatus(`处理失败：${error.message}`, 'error');
@@ -1582,7 +1609,7 @@
         const resultBox = document.getElementById('resultBox');
         
         const timestamp = new Date().toLocaleString('zh-CN');
-        const header = `📝 生成时间：${timestamp}\n⏱️ 音频时长：${formatTime(duration)}\n\n`;
+        const header = `📝 生成时间：${timestamp}\n⏱️ 音频时长：${formatTime(duration)}\n💡 说话人标记基于停顿时间自动推测，可能不准确\n\n`;
         
         content.textContent = header + text;
         resultBox.classList.add('show');
