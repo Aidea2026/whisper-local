@@ -210,15 +210,17 @@
         }
         @keyframes spin { to { transform: rotate(360deg); } }
         
-        .tips {
-            background: #fef3c7;
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 20px;
-            font-size: 14px;
-            color: #92400e;
+        .debug-info {
+            background: #f3f4f6;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-size: 12px;
+            font-family: monospace;
+            color: #6b7280;
+            display: none;
         }
-        .tips strong { color: #78350f; }
+        .debug-info.show { display: block; }
     </style>
 </head>
 <body>
@@ -231,7 +233,7 @@
         <div class="content">
             <div class="alert info show" id="statusAlert">
                 欢迎使用！首次使用需要下载 AI 模型（约 150MB），请耐心等待。<br>
-                <small>修复版：点击"加载模型"按钮后才开始初始化，避免自动加载错误。</small>
+                <small>已修复 CDN 配置，使用 Hugging Face 镜像站点。</small>
             </div>
             
             <div class="upload-box" id="dropZone">
@@ -283,6 +285,8 @@
                 </div>
             </div>
             
+            <div class="debug-info" id="debugInfo"></div>
+            
             <button onclick="startTranscribe()" id="transcribeBtn" disabled style="margin-bottom: 20px;">
                 🚀 开始转写
             </button>
@@ -295,70 +299,82 @@
                 <div class="result-content" id="resultContent"></div>
             </div>
             
-            <div class="tips">
+            <div class="tips" style="background: #fef3c7; padding: 15px; border-radius: 8px; margin-top: 20px; font-size: 14px; color: #92400e;">
                 <strong>💡 使用提示：</strong><br>
-                1. 点击"加载模型"按钮后才会下载 AI 模型（修复自动加载问题）<br>
+                1. 点击"加载模型"按钮后才会下载 AI 模型<br>
                 2. 30分钟视频约需 20-30 分钟处理（Base模型）<br>
                 3. 建议使用 Chrome/Edge 浏览器以获得最佳性能<br>
-                4. 处理过程中请勿关闭或刷新页面
+                4. 如仍报错，请按 F12 → Network → 查看红色失败请求
             </div>
         </div>
     </div>
 
 <script type="module">
-    // ==========================================
-    // 关键修复：不再使用顶层静态导入，改为动态导入
-    // ==========================================
-    let transformers = null;  // 存储 transformers.js 模块
-    let transcriber = null;   // 语音识别管道
+    let transformers = null;
+    let transcriber = null;
     let currentFile = null;
     let isModelLoaded = false;
     
-    // DOM 元素引用
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
     const statusAlert = document.getElementById('statusAlert');
+    const debugInfo = document.getElementById('debugInfo');
+    
+    function log(msg) {
+        console.log(msg);
+        debugInfo.textContent += msg + '\n';
+        debugInfo.classList.add('show');
+    }
     
     // ==========================================
-    // 关键修复 1：动态导入 + 延迟初始化
+    // 关键修复：使用 Hugging Face 国内镜像
     // ==========================================
     async function initializeEnvironment() {
-        if (transformers) return transformers; // 已初始化则直接返回
+        if (transformers) return transformers;
         
         try {
-            // 关键修复：使用 await import() 确保库完全加载后再配置
+            log('[1/4] 正在动态导入 Transformers.js...');
             const module = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2');
             
-            // 关键修复：延迟 300ms，确保库内部初始化完成
+            log('[2/4] 等待内部初始化...');
             await new Promise(resolve => setTimeout(resolve, 300));
             
             transformers = module;
             const { env } = transformers;
             
-            // 关键修复：在库加载后立即配置环境变量，防止从当前域名加载
-            env.remoteHost = 'https://www.modelscope.cn';
-            env.remotePathTemplate = 'models/{model}/resolve/master/';
-            env.allowLocalModels = false;  // 关键：禁止从当前域名加载任何模型
+            // ==========================================
+            // 关键修复：使用 hf-mirror.com（Hugging Face 国内镜像）
+            // ==========================================
+            log('[3/4] 配置 CDN 环境...');
+            
+            // 方案 A：使用 Hugging Face 镜像（推荐，国内可用）
+            env.remoteHost = 'https://hf-mirror.com';
+            env.remotePathTemplate = 'models/{model}/resolve/main/';
+            
+            // 方案 B：如果方案 A 失败，可以尝试 jsDelivr（仅限已发布到 npm 的模型）
+            // env.remoteHost = 'https://cdn.jsdelivr.net/npm/';
+            // env.remotePathTemplate = '@xenova/{model}/';
+            
+            // 关键：禁止从当前域名加载，防止返回 HTML 错误页
+            env.allowLocalModels = false;
+            env.allowRemoteModels = true;
             env.useBrowserCache = true;
             
-            // 可选：配置 WebAssembly 线程（避免某些浏览器兼容问题）
+            // 禁用 WebAssembly 多线程（避免某些浏览器兼容问题）
             if (env.backends?.onnx?.wasm) {
                 env.backends.onnx.wasm.numThreads = 1;
                 env.backends.onnx.wasm.proxy = false;
             }
             
-            console.log('[Transformers.js] 环境初始化成功，使用 ModelScope CDN');
+            log('[4/4] 环境配置完成，使用 CDN: ' + env.remoteHost);
             return transformers;
             
         } catch (error) {
-            console.error('[Transformers.js] 初始化失败:', error);
-            throw new Error(`初始化失败: ${error.message}`);
+            log('❌ 初始化失败: ' + error.message);
+            throw error;
         }
     }
     
-    // ==========================================
-    // 事件监听设置（保持原有逻辑）
-    // ==========================================
     dropZone.addEventListener('click', () => fileInput.click());
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -392,7 +408,6 @@
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
     
-    // 繁体转简体映射表（保持原有）
     function traditionalToSimple(text) {
         const map = {
             '變': '变', '馬': '马', '時': '时', '進': '进', '學': '学', '說': '说', '話': '话',
@@ -404,30 +419,25 @@
             '則': '则', '剛': '刚', '纔': '才', '買': '买', '賣': '卖', '讀': '读', '寫': '写', 
             '聽': '听', '聞': '闻', '聲': '声', '響': '响', '氣': '气', '順': '顺', '風': '风', 
             '電': '电', '飛': '飞', '機': '机', '時': '时', '間': '间', '鐘': '钟', '錶': '表', 
-            '帶': '带', '進': '进', '過': '过', '遠': '远', '離': '离', '開': '开', '關': '关', 
-            '門': '门', '們': '们', '誰': '谁', '為': '为', '什': '什', '麼': '么', '這': '这', 
-            '裡': '里', '裏': '里', '國': '国', '內': '内', '際': '际', '關': '关', '係': '系', 
-            '統': '统', '總': '总', '結': '结', '給': '给', '紅': '红', '綠': '绿', '藍': '蓝', 
-            '黃': '黄', '色': '色', '條': '条', '紋': '纹', '動': '动', '態': '态', '圖': '图', 
-            '片': '片', '資': '资', '訊': '讯', '號': '号', '碼': '码', '稱': '称', '謂': '谓', 
-            '語': '语', '言': '言', '約': '约', '級': '级', '極': '极', '樂': '乐', '觀': '观', 
-            '眾': '众', '響': '响', '區': '区', '別': '别', '隻': '只', '雙': '双', '對': '对', 
-            '備': '备', '複': '复', '雜': '杂', '簡': '简', '單': '单', '愛': '爱', '護': '护', 
-            '據': '据', '談': '谈', '論': '论', '講': '讲', '記': '记', '錄': '录', '載': '载', 
-            '料': '料', '財': '财', '產': '产', '實': '实', '現': '现', '場': '场', '觀': '观', 
-            '親': '亲', '幫': '帮', '請': '请', '沒': '没', '還': '还', '讓': '让', '過': '过', 
-            '發': '发', '覺': '觉', '經': '经', '當': '当', '從': '从', '兩': '两', '會': '会', 
-            '您': '您', '選': '选', '擇': '择', '結': '结', '構': '构', '態': '态', '面': '面', 
-            '為': '为', '無': '无', '與': '与', '寫': '写', '轉': '转', '換': '换', '顯': '显', 
-            '示': '示', '後': '后', '並': '并', '於': '于', '產': '产', '種': '种', '義': '义', 
-            '務': '务', '報': '报', '紙': '纸', '筆': '笔', '畫': '画', '鍵': '键', '盤': '盘', 
-            '腦': '脑', '電': '电', '視': '视', '聽': '听', '聞': '闻', '聲': '声', '響': '响', 
-            '氣': '气', '順': '顺', '風': '风', '電': '电', '車': '车', '馬': '马', '飛': '飞', 
-            '機': '机', '時': '时', '間': '间', '鐘': '钟', '錶': '表', '帶': '带', '來': '来', 
-            '進': '进', '過': '过', '遠': '远', '離': '离', '開': '开', '關': '关', '門': '门', 
-            '誰': '谁', '為': '为', '什': '什', '麼': '么', '這': '这', '裡': '里', '國': '国', 
-            '內': '内', '際': '际', '關': '关', '係': '系', '統': '统', '總': '总', '結': '结', 
-            '給': '给', '紅': '红', '綠': '绿', '藍': '蓝', '黃': '黄', '黑': '黑', '白': '白'
+            '帶': '带', '來': '来', '進': '进', '過': '过', '遠': '远', '離': '离', '開': '开', 
+            '關': '关', '門': '门', '們': '们', '誰': '谁', '為': '为', '什': '什', '麼': '么', 
+            '這': '这', '裡': '里', '裏': '里', '國': '国', '內': '内', '際': '际', '關': '关', 
+            '係': '系', '統': '统', '總': '总', '結': '结', '給': '给', '紅': '红', '綠': '绿', 
+            '藍': '蓝', '黃': '黄', '黑': '黑', '白': '白', '色': '色', '條': '条', '紋': '纹', 
+            '動': '动', '態': '态', '圖': '图', '片': '片', '資': '资', '訊': '讯', '號': '号', 
+            '碼': '码', '稱': '称', '謂': '谓', '語': '语', '言': '言', '約': '约', '級': '级', 
+            '極': '极', '樂': '乐', '觀': '观', '眾': '众', '響': '响', '區': '区', '別': '别', 
+            '隻': '只', '雙': '双', '對': '对', '備': '备', '複': '复', '雜': '杂', '簡': '简', 
+            '單': '单', '愛': '爱', '護': '护', '據': '据', '談': '谈', '論': '论', '講': '讲', 
+            '記': '记', '錄': '录', '載': '载', '料': '料', '財': '财', '產': '产', '實': '实', 
+            '現': '现', '場': '场', '觀': '观', '親': '亲', '幫': '帮', '請': '请', '沒': '没', 
+            '還': '还', '讓': '让', '過': '过', '發': '发', '覺': '觉', '經': '经', '當': '当', 
+            '從': '从', '兩': '两', '會': '会', '您': '您', '選': '选', '擇': '择', '結': '结', 
+            '構': '构', '態': '态', '面': '面', '為': '为', '無': '无', '與': '与', '寫': '写', 
+            '轉': '转', '換': '换', '顯': '显', '示': '示', '後': '后', '並': '并', '於': '于', 
+            '產': '产', '種': '种', '義': '义', '務': '务', '報': '报', '紙': '纸', '筆': '笔', 
+            '畫': '画', '鍵': '键', '盤': '盘', '腦': '脑', '電': '电', '視': '视', '聽': '听', 
+            '聞': '闻', '聲': '声', '響': '响', '氣': '气', '順': '顺'
         };
         
         let result = text;
@@ -437,7 +447,6 @@
         return result;
     }
     
-    // 智能添加标点（保持原有）
     function addPunctuation(text) {
         return text
             .replace(/([然后|但是|所以|可是|不过|接着|接下来|最后|首先|其次|另外|而且])/g, '，$1')
@@ -461,30 +470,26 @@
         document.getElementById('transcribeBtn').disabled = !isModelLoaded;
     }
     
-    // ==========================================
-    // 关键修复 2：用户触发加载，确保环境就绪
-    // ==========================================
     window.loadModel = async function() {
         const modelName = document.getElementById('modelSelect').value;
         const btn = document.getElementById('loadModelBtn');
         
         btn.disabled = true;
-        btn.innerHTML = '<span class="loading"></span>初始化环境...';
-        showStatus(`正在初始化 AI 环境...`, 'info');
+        btn.innerHTML = '<span class="loading"></span>初始化...';
+        debugInfo.textContent = '';
+        debugInfo.classList.remove('show');
         document.getElementById('progressBox').classList.add('show');
-        updateProgress(5, '准备中...');
+        updateProgress(5, '准备环境...');
         
         try {
-            // 关键修复：先初始化环境（动态导入 + 配置）
             const { pipeline } = await initializeEnvironment();
             
-            // 关键修复 3：再次延迟，确保 env 配置完全渗透到子模块
             await new Promise(resolve => setTimeout(resolve, 200));
             
-            updateProgress(10, `开始下载 ${modelName} 模型...`);
-            showStatus(`正在下载 ${modelName} 模型（首次使用需 150MB 左右）...`, 'info');
+            updateProgress(15, `开始下载 ${modelName} 模型...`);
+            showStatus(`正在连接 Hugging Face 镜像下载模型...`, 'info');
             
-            // 现在安全地加载模型
+            // 注意：hf-mirror.com 支持标准的 HuggingFace 模型路径
             transcriber = await pipeline(
                 'automatic-speech-recognition',
                 `Xenova/whisper-${modelName}`,
@@ -492,7 +497,7 @@
                     progress_callback: (progress) => {
                         if (progress.status === 'progress') {
                             const pct = Math.round(progress.progress * 100);
-                            updateProgress(10 + pct * 0.9, `下载中... ${pct}%`);
+                            updateProgress(15 + pct * 0.85, `下载中... ${pct}%`);
                         }
                     }
                 }
@@ -500,14 +505,25 @@
             
             isModelLoaded = true;
             updateProgress(100, '完成');
-            showStatus(`✅ ${modelName} 模型就绪！现在可以选择文件并开始转写`, 'success');
+            showStatus(`✅ ${modelName} 模型就绪！`, 'success');
             document.getElementById('transcribeBtn').disabled = !currentFile;
             
             setTimeout(() => document.getElementById('progressBox').classList.remove('show'), 2000);
             
         } catch (error) {
-            console.error('模型加载错误:', error);
-            showStatus(`❌ 失败：${error.message}<br><small>如果持续失败，请检查网络连接或尝试切换模型</small>`, 'error');
+            console.error('详细错误:', error);
+            log(`❌ 错误详情: ${error.message}`);
+            log(`堆栈: ${error.stack}`);
+            
+            // 提供针对性提示
+            let tip = '';
+            if (error.message.includes('Unexpected token')) {
+                tip = '<br><small>💡 这通常意味着 CDN 返回了 HTML 错误页而非模型文件。请检查网络连接，或尝试开启 VPN。</small>';
+            } else if (error.message.includes('Failed to fetch')) {
+                tip = '<br><small>💡 网络连接失败，请检查是否能访问 hf-mirror.com</small>';
+            }
+            
+            showStatus(`❌ 失败：${error.message}${tip}`, 'error');
             updateProgress(0, '失败');
         } finally {
             btn.disabled = false;
@@ -546,7 +562,6 @@
             
             const channelData = audioBuffer.getChannelData(0);
             
-            // 分段参数（保持原有逻辑）
             const chunkDuration = 30;
             const overlapDuration = 5;
             const sampleRate = 16000;
@@ -608,7 +623,6 @@
             
             updateProgress(90, '整理格式...');
             
-            // 格式化输出
             let formattedText = '';
             let lastText = '';
             
@@ -625,7 +639,7 @@
             displayResult(formattedText, totalDuration);
             
             updateProgress(100, '完成');
-            showStatus('✅ 转写完成！已转换为简体并标记说话人（基于停顿检测，仅供参考）', 'success');
+            showStatus('✅ 转写完成！', 'success');
             
         } catch (error) {
             showStatus(`处理失败：${error.message}`, 'error');
@@ -656,15 +670,6 @@
             showStatus('复制失败，请手动复制', 'error');
         });
     };
-    
-    // ==========================================
-    // 关键修复 4：DOM 就绪后设置事件监听，但不自动加载模型
-    // ==========================================
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', () => {
-            console.log('[Init] DOM 就绪，等待用户操作...');
-        });
-    }
 </script>
 </body>
 </html>
