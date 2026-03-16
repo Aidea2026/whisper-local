@@ -324,12 +324,12 @@
             // 关键修复：正确的 jsDelivr CDN 配置
             // ==========================================
             // 方案：使用 @xenova 的 npm 包，通过 jsDelivr 分发
-            env.remoteHost = 'https://cdn.jsdelivr.net/npm/@xenova/';
+            env.remoteHost = 'https://www.modelscope.cn/models/';
             
             // 关键：remotePathTemplate 使用模板变量 {model}
             // 当调用 pipeline('...', 'base') 时，{model} 会被替换为 'base'
             // 最终路径：https://cdn.jsdelivr.net/npm/@xenova/whisper-base/
-            env.remotePathTemplate = 'whisper-{model}/';
+            env.remotePathTemplate = 'Xenova/whisper-{model}/resolve/master/';
             
             // 关键配置：禁止从当前域名加载，强制使用远程 CDN
             env.allowLocalModels = false;
