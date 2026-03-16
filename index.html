@@ -221,7 +221,7 @@
         <div class="content">
             <div class="alert info show" id="statusAlert">
                 欢迎使用！首次使用需要下载 AI 模型（约 39-150MB）。<br>
-                <small>当前使用 jsDelivr CDN（国内可用），如仍失败请尝试开启 VPN 或使用手机热点。</small>
+                <small>已修复：使用 jsDelivr CDN 加载模型文件。</small>
             </div>
             
             <div class="upload-box" id="dropZone">
@@ -287,10 +287,10 @@
             
             <div class="tips" style="background: #fef3c7; padding: 15px; border-radius: 8px; margin-top: 20px; font-size: 14px; color: #92400e;">
                 <strong>💡 故障排除：</strong><br>
-                1. 如果持续报错，请按 F12 → Console 查看详细错误<br>
-                2. 可能是 CDN 被拦截，尝试切换网络（手机热点）或 VPN<br>
-                3. 首次下载模型需要 39-150MB 流量，请确保网络稳定<br>
-                4. 推荐使用 Chrome/Edge 浏览器，Safari 可能存在兼容性问题
+                1. 如果持续 404 错误，请按 F12 → Network → 查看请求的 URL<br>
+                2. 可能是网络拦截了 jsDelivr，尝试开启 VPN<br>
+                3. 确保浏览器不是 IE/旧版 Safari<br>
+                4. 首次下载模型需要稳定网络连接（39-150MB）
             </div>
         </div>
     </div>
@@ -309,47 +309,55 @@
         if (transformers) return transformers;
         
         try {
-            console.log('[初始化] 导入 Transformers.js...');
+            console.log('[初始化] 动态导入 Transformers.js...');
             const module = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2');
             
+            // 关键修复：延迟确保库内部初始化完成
             await new Promise(resolve => setTimeout(resolve, 300));
             
             transformers = module;
             const { env } = transformers;
             
-            console.log('[初始化] 配置环境变量...');
+            console.log('[初始化] 配置 CDN 环境...');
             
             // ==========================================
-            // 方案 A：使用 jsDelivr（从 npm 加载，最可靠）
+            // 关键修复：正确的 jsDelivr CDN 配置
             // ==========================================
-            env.remoteHost = 'https://cdn.jsdelivr.net/npm/';
-            env.remotePathTemplate = '@xenova/{model}/';
+            // 方案：使用 @xenova 的 npm 包，通过 jsDelivr 分发
+            env.remoteHost = 'https://cdn.jsdelivr.net/npm/@xenova/';
             
-            // ==========================================
-            // 方案 B：如果 jsDelivr 也被墙，取消下面注释使用本地代理
-            // ==========================================
-            // 你需要在 Cloudflare Workers 创建一个代理，然后替换这里的地址
-            // env.remoteHost = 'https://你的-worker-name.你的子域名.workers.dev/';
-            // env.remotePathTemplate = 'models/{model}/';
+            // 关键：remotePathTemplate 使用模板变量 {model}
+            // 当调用 pipeline('...', 'base') 时，{model} 会被替换为 'base'
+            // 最终路径：https://cdn.jsdelivr.net/npm/@xenova/whisper-base/
+            env.remotePathTemplate = 'whisper-{model}/';
             
-            env.allowLocalModels = false;  // 关键：禁止从当前域名加载
-            env.useBrowserCache = true;    // 启用浏览器缓存
+            // 关键配置：禁止从当前域名加载，强制使用远程 CDN
+            env.allowLocalModels = false;
+            env.allowRemoteModels = true;
             
-            // WASM 配置
+            // 启用浏览器缓存，避免重复下载
+            env.useBrowserCache = true;
+            
+            // WASM 配置：单线程避免兼容性问题
             if (env.backends?.onnx?.wasm) {
                 env.backends.onnx.wasm.numThreads = 1;
                 env.backends.onnx.wasm.proxy = false;
             }
             
-            console.log('[初始化] 环境就绪，CDN:', env.remoteHost);
+            console.log('[初始化] 环境配置完成：');
+            console.log('  remoteHost:', env.remoteHost);
+            console.log('  remotePathTemplate:', env.remotePathTemplate);
+            console.log('  allowLocalModels:', env.allowLocalModels);
+            
             return transformers;
             
         } catch (error) {
             console.error('[初始化失败]', error);
-            throw error;
+            throw new Error(`环境初始化失败: ${error.message}`);
         }
     }
     
+    // 文件上传事件
     dropZone.addEventListener('click', () => fileInput.click());
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -446,7 +454,7 @@
     }
     
     window.loadModel = async function() {
-        const modelName = document.getElementById('modelSelect').value;
+        const modelName = document.getElementById('modelSelect').value; // 'base', 'tiny', 'small'
         const btn = document.getElementById('loadModelBtn');
         
         btn.disabled = true;
@@ -457,15 +465,24 @@
         try {
             const { pipeline } = await initializeEnvironment();
             
+            // 再次延迟确保配置生效
             await new Promise(resolve => setTimeout(resolve, 200));
             
             updateProgress(15, `开始下载 ${modelName} 模型...`);
-            showStatus(`正在连接 jsDelivr CDN...`, 'info');
+            showStatus(`正在连接 jsDelivr CDN 下载 ${modelName} 模型...`, 'info');
+            
+            // ==========================================
+            // 关键修复：只传递模型大小，不传递完整路径
+            // ==========================================
+            // 之前：'Xenova/whisper-base'（会被当作路径的一部分，导致 404）
+            // 现在：'base'（会被填入 remotePathTemplate 的 {model} 位置）
+            // 最终 URL：https://cdn.jsdelivr.net/npm/@xenova/whisper-base/config.json
             
             transcriber = await pipeline(
                 'automatic-speech-recognition',
-                `Xenova/whisper-${modelName}`,
+                modelName,  // 关键：只传 'base'，不传 'Xenova/whisper-base'
                 {
+                    // 进度回调
                     progress_callback: (progress) => {
                         console.log('下载进度:', progress);
                         if (progress.status === 'progress') {
@@ -488,14 +505,11 @@
         } catch (error) {
             console.error('模型加载错误:', error);
             
-            // 详细的错误诊断
             let diagnosis = '';
-            if (error.message.includes('Unexpected token')) {
-                diagnosis = '<br><strong>诊断：</strong>CDN 返回了 HTML 错误页（404/503）。<br>建议：① 切换网络（尝试手机热点）② 开启 VPN ③ 检查控制台 Network 标签';
-            } else if (error.message.includes('Failed to fetch')) {
-                diagnosis = '<br><strong>诊断：</strong>网络连接失败，无法连接到 CDN。<br>建议：检查网络连接，或尝试其他网络环境';
-            } else if (error.message.includes('fetch failed')) {
-                diagnosis = '<br><strong>诊断：</strong>可能是 CORS 或网络中断问题';
+            if (error.message.includes('404')) {
+                diagnosis = '<br><strong>诊断：</strong>模型文件 404。可能原因：<br>1. jsDelivr 被拦截<br>2. 模型名称格式错误<br>3. 网络连接问题<br>建议：尝试开启 VPN';
+            } else if (error.message.includes('network') || error.message.includes('fetch')) {
+                diagnosis = '<br><strong>诊断：</strong>网络连接失败。请检查能否访问 cdn.jsdelivr.net';
             }
             
             showStatus(`❌ 失败：${error.message}${diagnosis}`, 'error');
@@ -537,6 +551,7 @@
             
             const channelData = audioBuffer.getChannelData(0);
             
+            // 分段处理
             const chunkDuration = 30;
             const overlapDuration = 5;
             const sampleRate = 16000;
