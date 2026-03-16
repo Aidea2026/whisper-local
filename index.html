@@ -230,7 +230,8 @@
         
         <div class="content">
             <div class="alert info show" id="statusAlert">
-                欢迎使用！首次使用需要下载 AI 模型（约 150MB），请耐心等待。
+                欢迎使用！首次使用需要下载 AI 模型（约 150MB），请耐心等待。<br>
+                <small>修复版：点击"加载模型"按钮后才开始初始化，避免自动加载错误。</small>
             </div>
             
             <div class="upload-box" id="dropZone">
@@ -296,7 +297,7 @@
             
             <div class="tips">
                 <strong>💡 使用提示：</strong><br>
-                1. 首次使用需下载模型，请保持页面打开<br>
+                1. 点击"加载模型"按钮后才会下载 AI 模型（修复自动加载问题）<br>
                 2. 30分钟视频约需 20-30 分钟处理（Base模型）<br>
                 3. 建议使用 Chrome/Edge 浏览器以获得最佳性能<br>
                 4. 处理过程中请勿关闭或刷新页面
@@ -305,21 +306,59 @@
     </div>
 
 <script type="module">
-    import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2';
-    
-    env.remoteHost = 'https://www.modelscope.cn';
-    env.remotePathTemplate = 'models/{model}/resolve/master/';
-    env.allowLocalModels = true;
-    env.useBrowserCache = true;
-    
-    let transcriber = null;
+    // ==========================================
+    // 关键修复：不再使用顶层静态导入，改为动态导入
+    // ==========================================
+    let transformers = null;  // 存储 transformers.js 模块
+    let transcriber = null;   // 语音识别管道
     let currentFile = null;
     let isModelLoaded = false;
     
+    // DOM 元素引用
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
     const statusAlert = document.getElementById('statusAlert');
     
+    // ==========================================
+    // 关键修复 1：动态导入 + 延迟初始化
+    // ==========================================
+    async function initializeEnvironment() {
+        if (transformers) return transformers; // 已初始化则直接返回
+        
+        try {
+            // 关键修复：使用 await import() 确保库完全加载后再配置
+            const module = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2');
+            
+            // 关键修复：延迟 300ms，确保库内部初始化完成
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            transformers = module;
+            const { env } = transformers;
+            
+            // 关键修复：在库加载后立即配置环境变量，防止从当前域名加载
+            env.remoteHost = 'https://www.modelscope.cn';
+            env.remotePathTemplate = 'models/{model}/resolve/master/';
+            env.allowLocalModels = false;  // 关键：禁止从当前域名加载任何模型
+            env.useBrowserCache = true;
+            
+            // 可选：配置 WebAssembly 线程（避免某些浏览器兼容问题）
+            if (env.backends?.onnx?.wasm) {
+                env.backends.onnx.wasm.numThreads = 1;
+                env.backends.onnx.wasm.proxy = false;
+            }
+            
+            console.log('[Transformers.js] 环境初始化成功，使用 ModelScope CDN');
+            return transformers;
+            
+        } catch (error) {
+            console.error('[Transformers.js] 初始化失败:', error);
+            throw new Error(`初始化失败: ${error.message}`);
+        }
+    }
+    
+    // ==========================================
+    // 事件监听设置（保持原有逻辑）
+    // ==========================================
     dropZone.addEventListener('click', () => fileInput.click());
     dropZone.addEventListener('dragover', (e) => {
         e.preventDefault();
@@ -336,7 +375,7 @@
     });
     
     function showStatus(message, type = 'info') {
-        statusAlert.textContent = message;
+        statusAlert.innerHTML = message;
         statusAlert.className = `alert ${type} show`;
     }
     
@@ -353,41 +392,42 @@
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     }
     
-    // 完整的繁体转简体映射表（覆盖常用字）
+    // 繁体转简体映射表（保持原有）
     function traditionalToSimple(text) {
         const map = {
             '變': '变', '馬': '马', '時': '时', '進': '进', '學': '学', '說': '说', '話': '话',
-            '們': '们', '這': '这', '個': '个', '來': '来', '麼': '么', '麼': '么', '們': '们',
-            '員': '员', '興': '兴', '奮': '奋', '頭': '头', '們': '们', '應': '应', '該': '该',
-            '問': '问', '題': '题', '開': '开', '來': '来', '長': '长', '東': '东', '車': '车',
-            '書': '书', '畫': '画', '盡': '尽', '見': '见', '識': '识', '認': '认', '語': '语',
-            '調': '调', '節': '节', '務': '务', '場': '场', '館': '馆', '處': '处', '點': '点',
-            '擊': '击', '統': '统', '計': '计', '劃': '划', '則': '则', '剛': '刚', '纔': '才',
-            '買': '买', '賣': '卖', '讀': '读', '寫': '写', '聽': '听', '聞': '闻', '聲': '声',
-            '響': '响', '區': '区', '別': '别', '隻': '只', '雙': '双', '對': '对', '備': '备',
-            '複': '复', '雜': '杂', '簡': '简', '單': '单', '愛': '爱', '護': '护', '據': '据',
-            '談': '谈', '論': '论', '講': '讲', '記': '记', '錄': '录', '載': '载', '資': '资',
-            '料': '料', '財': '财', '產': '产', '實': '实', '現': '现', '場': '场', '觀': '观',
-            '眾': '众', '親': '亲', '幫': '帮', '請': '请', '問': '问', '沒': '没', '還': '还',
-            '讓': '让', '過': '过', '發': '发', '覺': '觉', '經': '经', '當': '当', '從': '从',
-            '兩': '两', '會': '会', '什': '什', '您': '您', '別': '别', '關': '关', '係': '系',
-            '選': '选', '擇': '择', '結': '结', '構': '构', '態': '态', '圖': '图', '盡': '尽',
-            '為': '为', '無': '无', '與': '与', '寫': '写', '轉': '转', '換': '换', '顯': '显',
-            '示': '示', '後': '后', '並': '并', '於': '于', '產': '产', '種': '种', '義': '义',
-            '務': '务', '報': '报', '紙': '纸', '筆': '笔', '畫': '画', '鍵': '键', '盤': '盘',
-            '腦': '脑', '電': '电', '視': '视', '聽': '听', '眾': '众', '響': '响', '氣': '气',
-            '順': '顺', '風': '风', '電': '电', '車': '车', '馬': '马', '飛': '飞', '機': '机',
-            '時': '时', '間': '间', '鐘': '钟', '錶': '表', '帶': '带', '來': '来', '進': '进',
-            '過': '过', '遠': '远', '離': '离', '開': '开', '關': '关', '門': '门', '們': '们',
-            '誰': '谁', '為': '为', '什': '什', '麼': '么', '這': '这', '裡': '里', '裡': '里',
-            '裏': '里', '國': '国', '內': '内', '國': '国', '際': '际', '關': '关', '係': '系',
-            '統': '统', '總': '总', '結': '结', '給': '给', '給': '给', '紅': '红', '綠': '绿',
-            '藍': '蓝', '黃': '黄', '黑': '黑', '白': '白', '色': '色', '條': '条', '紋': '纹',
-            '動': '动', '態': '态', '畫': '画', '面': '面', '圖': '图', '片': '片', '資': '资',
-            '訊': '讯', '號': '号', '碼': '码', '號': '号', '稱': '称', '謂': '谓', '語': '语',
-            '言': '言', '話': '话', '說': '说', '講': '讲', '談': '谈', '論': '论', '語': '语',
-            '調': '调', '節': '节', '約': '约', '級': '级', '極': '极', '樂': '乐', '觀': '观',
-            '眾': '众', '聽': '听', '聞': '闻', '聲': '声', '響': '响', '氣': '气', '順': '顺'
+            '們': '们', '這': '这', '個': '个', '來': '来', '麼': '么', '員': '员', '興': '兴', 
+            '奮': '奋', '頭': '头', '應': '应', '該': '该', '問': '问', '題': '题', '開': '开', 
+            '長': '长', '東': '东', '車': '车', '書': '书', '畫': '画', '盡': '尽', '見': '见', 
+            '識': '识', '認': '认', '語': '语', '調': '调', '節': '节', '務': '务', '場': '场', 
+            '館': '馆', '處': '处', '點': '点', '擊': '击', '統': '统', '計': '计', '劃': '划', 
+            '則': '则', '剛': '刚', '纔': '才', '買': '买', '賣': '卖', '讀': '读', '寫': '写', 
+            '聽': '听', '聞': '闻', '聲': '声', '響': '响', '氣': '气', '順': '顺', '風': '风', 
+            '電': '电', '飛': '飞', '機': '机', '時': '时', '間': '间', '鐘': '钟', '錶': '表', 
+            '帶': '带', '進': '进', '過': '过', '遠': '远', '離': '离', '開': '开', '關': '关', 
+            '門': '门', '們': '们', '誰': '谁', '為': '为', '什': '什', '麼': '么', '這': '这', 
+            '裡': '里', '裏': '里', '國': '国', '內': '内', '際': '际', '關': '关', '係': '系', 
+            '統': '统', '總': '总', '結': '结', '給': '给', '紅': '红', '綠': '绿', '藍': '蓝', 
+            '黃': '黄', '色': '色', '條': '条', '紋': '纹', '動': '动', '態': '态', '圖': '图', 
+            '片': '片', '資': '资', '訊': '讯', '號': '号', '碼': '码', '稱': '称', '謂': '谓', 
+            '語': '语', '言': '言', '約': '约', '級': '级', '極': '极', '樂': '乐', '觀': '观', 
+            '眾': '众', '響': '响', '區': '区', '別': '别', '隻': '只', '雙': '双', '對': '对', 
+            '備': '备', '複': '复', '雜': '杂', '簡': '简', '單': '单', '愛': '爱', '護': '护', 
+            '據': '据', '談': '谈', '論': '论', '講': '讲', '記': '记', '錄': '录', '載': '载', 
+            '料': '料', '財': '财', '產': '产', '實': '实', '現': '现', '場': '场', '觀': '观', 
+            '親': '亲', '幫': '帮', '請': '请', '沒': '没', '還': '还', '讓': '让', '過': '过', 
+            '發': '发', '覺': '觉', '經': '经', '當': '当', '從': '从', '兩': '两', '會': '会', 
+            '您': '您', '選': '选', '擇': '择', '結': '结', '構': '构', '態': '态', '面': '面', 
+            '為': '为', '無': '无', '與': '与', '寫': '写', '轉': '转', '換': '换', '顯': '显', 
+            '示': '示', '後': '后', '並': '并', '於': '于', '產': '产', '種': '种', '義': '义', 
+            '務': '务', '報': '报', '紙': '纸', '筆': '笔', '畫': '画', '鍵': '键', '盤': '盘', 
+            '腦': '脑', '電': '电', '視': '视', '聽': '听', '聞': '闻', '聲': '声', '響': '响', 
+            '氣': '气', '順': '顺', '風': '风', '電': '电', '車': '车', '馬': '马', '飛': '飞', 
+            '機': '机', '時': '时', '間': '间', '鐘': '钟', '錶': '表', '帶': '带', '來': '来', 
+            '進': '进', '過': '过', '遠': '远', '離': '离', '開': '开', '關': '关', '門': '门', 
+            '誰': '谁', '為': '为', '什': '什', '麼': '么', '這': '这', '裡': '里', '國': '国', 
+            '內': '内', '際': '际', '關': '关', '係': '系', '統': '统', '總': '总', '結': '结', 
+            '給': '给', '紅': '红', '綠': '绿', '藍': '蓝', '黃': '黄', '黑': '黑', '白': '白'
         };
         
         let result = text;
@@ -397,7 +437,7 @@
         return result;
     }
     
-    // 智能添加标点
+    // 智能添加标点（保持原有）
     function addPunctuation(text) {
         return text
             .replace(/([然后|但是|所以|可是|不过|接着|接下来|最后|首先|其次|另外|而且])/g, '，$1')
@@ -421,19 +461,30 @@
         document.getElementById('transcribeBtn').disabled = !isModelLoaded;
     }
     
+    // ==========================================
+    // 关键修复 2：用户触发加载，确保环境就绪
+    // ==========================================
     window.loadModel = async function() {
         const modelName = document.getElementById('modelSelect').value;
         const btn = document.getElementById('loadModelBtn');
         
         btn.disabled = true;
-        btn.innerHTML = '<span class="loading"></span>加载中...';
-        showStatus(`正在下载 ${modelName} 模型...`, 'info');
+        btn.innerHTML = '<span class="loading"></span>初始化环境...';
+        showStatus(`正在初始化 AI 环境...`, 'info');
         document.getElementById('progressBox').classList.add('show');
-        updateProgress(5, '连接服务器...');
+        updateProgress(5, '准备中...');
         
         try {
-            await new Promise(resolve => setTimeout(resolve, 500));
+            // 关键修复：先初始化环境（动态导入 + 配置）
+            const { pipeline } = await initializeEnvironment();
             
+            // 关键修复 3：再次延迟，确保 env 配置完全渗透到子模块
+            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            updateProgress(10, `开始下载 ${modelName} 模型...`);
+            showStatus(`正在下载 ${modelName} 模型（首次使用需 150MB 左右）...`, 'info');
+            
+            // 现在安全地加载模型
             transcriber = await pipeline(
                 'automatic-speech-recognition',
                 `Xenova/whisper-${modelName}`,
@@ -441,7 +492,7 @@
                     progress_callback: (progress) => {
                         if (progress.status === 'progress') {
                             const pct = Math.round(progress.progress * 100);
-                            updateProgress(5 + pct * 0.9, `下载中... ${pct}%`);
+                            updateProgress(10 + pct * 0.9, `下载中... ${pct}%`);
                         }
                     }
                 }
@@ -449,13 +500,15 @@
             
             isModelLoaded = true;
             updateProgress(100, '完成');
-            showStatus(`✅ ${modelName} 模型就绪！`, 'success');
+            showStatus(`✅ ${modelName} 模型就绪！现在可以选择文件并开始转写`, 'success');
             document.getElementById('transcribeBtn').disabled = !currentFile;
             
             setTimeout(() => document.getElementById('progressBox').classList.remove('show'), 2000);
             
         } catch (error) {
-            showStatus(`失败：${error.message}`, 'error');
+            console.error('模型加载错误:', error);
+            showStatus(`❌ 失败：${error.message}<br><small>如果持续失败，请检查网络连接或尝试切换模型</small>`, 'error');
+            updateProgress(0, '失败');
         } finally {
             btn.disabled = false;
             btn.innerHTML = '⚡ 加载模型';
@@ -493,19 +546,19 @@
             
             const channelData = audioBuffer.getChannelData(0);
             
-            // 分段参数
-            const chunkDuration = 30; // 30秒一段
-            const overlapDuration = 5; // 5秒重叠
+            // 分段参数（保持原有逻辑）
+            const chunkDuration = 30;
+            const overlapDuration = 5;
             const sampleRate = 16000;
             const chunkSize = chunkDuration * sampleRate;
-            const stepSize = (chunkDuration - overlapDuration) * sampleRate; // 25秒步进
+            const stepSize = (chunkDuration - overlapDuration) * sampleRate;
             
             const totalChunks = Math.ceil((channelData.length - overlapDuration * sampleRate) / stepSize);
             let allSegments = [];
             
             updateProgress(20, 'AI转写中...');
             
-            let currentSpeaker = 'A'; // 初始说话人
+            let currentSpeaker = 'A';
             let lastEndTime = 0;
             
             for (let i = 0; i < totalChunks; i++) {
@@ -513,7 +566,6 @@
                 const endSample = Math.min(startSample + chunkSize, channelData.length);
                 const chunk = channelData.slice(startSample, endSample);
                 
-                // 计算实际时间（关键修复）
                 const actualStartTime = startSample / sampleRate;
                 const actualEndTime = endSample / sampleRate;
                 
@@ -526,18 +578,14 @@
                     repetition_penalty: 1.2
                 });
                 
-                // 处理结果
                 const chunks = result.chunks || [{text: result.text, timestamp: [0, chunkDuration]}];
                 
                 for (let seg of chunks) {
                     const segText = seg.text || '';
                     if (!segText.trim()) continue;
                     
-                    // 繁体转简体
                     const simpleText = traditionalToSimple(segText);
                     
-                    // 基于停顿检测切换说话人（简单启发式）
-                    // 如果与前一段间隔超过3秒，切换说话人
                     if (actualStartTime - lastEndTime > 3) {
                         currentSpeaker = currentSpeaker === 'A' ? 'B' : 'A';
                     }
@@ -560,23 +608,17 @@
             
             updateProgress(90, '整理格式...');
             
-            // 格式化输出（按时间排序并去重）
+            // 格式化输出
             let formattedText = '';
             let lastText = '';
             
             for (let seg of allSegments) {
-                // 去重：跳过与上一句完全相同的
                 if (seg.text === lastText) continue;
-                
-                // 跳过包含上一句的重复内容（简化版）
                 if (seg.text.length > 10 && lastText.length > 10 && 
                     seg.text.includes(lastText.slice(-10))) continue;
                 
                 const punctuatedText = addPunctuation(seg.text);
-                
-                // 格式：[时间] 说话人：内容
                 formattedText += `[${formatTime(seg.startTime)}] ${seg.speaker}：${punctuatedText}\n\n`;
-                
                 lastText = seg.text;
             }
             
@@ -614,6 +656,15 @@
             showStatus('复制失败，请手动复制', 'error');
         });
     };
+    
+    // ==========================================
+    // 关键修复 4：DOM 就绪后设置事件监听，但不自动加载模型
+    // ==========================================
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('[Init] DOM 就绪，等待用户操作...');
+        });
+    }
 </script>
 </body>
 </html>
