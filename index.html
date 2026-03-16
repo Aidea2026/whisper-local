@@ -209,18 +209,6 @@
             vertical-align: middle;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-        
-        .debug-info {
-            background: #f3f4f6;
-            padding: 10px;
-            border-radius: 6px;
-            margin-top: 10px;
-            font-size: 12px;
-            font-family: monospace;
-            color: #6b7280;
-            display: none;
-        }
-        .debug-info.show { display: block; }
     </style>
 </head>
 <body>
@@ -232,8 +220,8 @@
         
         <div class="content">
             <div class="alert info show" id="statusAlert">
-                欢迎使用！首次使用需要下载 AI 模型（约 150MB），请耐心等待。<br>
-                <small>已修复 CDN 配置，使用 Hugging Face 镜像站点。</small>
+                欢迎使用！首次使用需要下载 AI 模型（约 39-150MB）。<br>
+                <small>当前使用 jsDelivr CDN（国内可用），如仍失败请尝试开启 VPN 或使用手机热点。</small>
             </div>
             
             <div class="upload-box" id="dropZone">
@@ -285,8 +273,6 @@
                 </div>
             </div>
             
-            <div class="debug-info" id="debugInfo"></div>
-            
             <button onclick="startTranscribe()" id="transcribeBtn" disabled style="margin-bottom: 20px;">
                 🚀 开始转写
             </button>
@@ -300,11 +286,11 @@
             </div>
             
             <div class="tips" style="background: #fef3c7; padding: 15px; border-radius: 8px; margin-top: 20px; font-size: 14px; color: #92400e;">
-                <strong>💡 使用提示：</strong><br>
-                1. 点击"加载模型"按钮后才会下载 AI 模型<br>
-                2. 30分钟视频约需 20-30 分钟处理（Base模型）<br>
-                3. 建议使用 Chrome/Edge 浏览器以获得最佳性能<br>
-                4. 如仍报错，请按 F12 → Network → 查看红色失败请求
+                <strong>💡 故障排除：</strong><br>
+                1. 如果持续报错，请按 F12 → Console 查看详细错误<br>
+                2. 可能是 CDN 被拦截，尝试切换网络（手机热点）或 VPN<br>
+                3. 首次下载模型需要 39-150MB 流量，请确保网络稳定<br>
+                4. 推荐使用 Chrome/Edge 浏览器，Safari 可能存在兼容性问题
             </div>
         </div>
     </div>
@@ -318,59 +304,48 @@
     const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('fileInput');
     const statusAlert = document.getElementById('statusAlert');
-    const debugInfo = document.getElementById('debugInfo');
     
-    function log(msg) {
-        console.log(msg);
-        debugInfo.textContent += msg + '\n';
-        debugInfo.classList.add('show');
-    }
-    
-    // ==========================================
-    // 关键修复：使用 Hugging Face 国内镜像
-    // ==========================================
     async function initializeEnvironment() {
         if (transformers) return transformers;
         
         try {
-            log('[1/4] 正在动态导入 Transformers.js...');
+            console.log('[初始化] 导入 Transformers.js...');
             const module = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2');
             
-            log('[2/4] 等待内部初始化...');
             await new Promise(resolve => setTimeout(resolve, 300));
             
             transformers = module;
             const { env } = transformers;
             
+            console.log('[初始化] 配置环境变量...');
+            
             // ==========================================
-            // 关键修复：使用 hf-mirror.com（Hugging Face 国内镜像）
+            // 方案 A：使用 jsDelivr（从 npm 加载，最可靠）
             // ==========================================
-            log('[3/4] 配置 CDN 环境...');
+            env.remoteHost = 'https://cdn.jsdelivr.net/npm/';
+            env.remotePathTemplate = '@xenova/{model}/';
             
-            // 方案 A：使用 Hugging Face 镜像（推荐，国内可用）
-            env.remoteHost = 'https://hf-mirror.com';
-            env.remotePathTemplate = 'models/{model}/resolve/main/';
+            // ==========================================
+            // 方案 B：如果 jsDelivr 也被墙，取消下面注释使用本地代理
+            // ==========================================
+            // 你需要在 Cloudflare Workers 创建一个代理，然后替换这里的地址
+            // env.remoteHost = 'https://你的-worker-name.你的子域名.workers.dev/';
+            // env.remotePathTemplate = 'models/{model}/';
             
-            // 方案 B：如果方案 A 失败，可以尝试 jsDelivr（仅限已发布到 npm 的模型）
-            // env.remoteHost = 'https://cdn.jsdelivr.net/npm/';
-            // env.remotePathTemplate = '@xenova/{model}/';
+            env.allowLocalModels = false;  // 关键：禁止从当前域名加载
+            env.useBrowserCache = true;    // 启用浏览器缓存
             
-            // 关键：禁止从当前域名加载，防止返回 HTML 错误页
-            env.allowLocalModels = false;
-            env.allowRemoteModels = true;
-            env.useBrowserCache = true;
-            
-            // 禁用 WebAssembly 多线程（避免某些浏览器兼容问题）
+            // WASM 配置
             if (env.backends?.onnx?.wasm) {
                 env.backends.onnx.wasm.numThreads = 1;
                 env.backends.onnx.wasm.proxy = false;
             }
             
-            log('[4/4] 环境配置完成，使用 CDN: ' + env.remoteHost);
+            console.log('[初始化] 环境就绪，CDN:', env.remoteHost);
             return transformers;
             
         } catch (error) {
-            log('❌ 初始化失败: ' + error.message);
+            console.error('[初始化失败]', error);
             throw error;
         }
     }
@@ -476,8 +451,6 @@
         
         btn.disabled = true;
         btn.innerHTML = '<span class="loading"></span>初始化...';
-        debugInfo.textContent = '';
-        debugInfo.classList.remove('show');
         document.getElementById('progressBox').classList.add('show');
         updateProgress(5, '准备环境...');
         
@@ -487,17 +460,19 @@
             await new Promise(resolve => setTimeout(resolve, 200));
             
             updateProgress(15, `开始下载 ${modelName} 模型...`);
-            showStatus(`正在连接 Hugging Face 镜像下载模型...`, 'info');
+            showStatus(`正在连接 jsDelivr CDN...`, 'info');
             
-            // 注意：hf-mirror.com 支持标准的 HuggingFace 模型路径
             transcriber = await pipeline(
                 'automatic-speech-recognition',
                 `Xenova/whisper-${modelName}`,
                 {
                     progress_callback: (progress) => {
+                        console.log('下载进度:', progress);
                         if (progress.status === 'progress') {
                             const pct = Math.round(progress.progress * 100);
                             updateProgress(15 + pct * 0.85, `下载中... ${pct}%`);
+                        } else if (progress.status === 'download') {
+                            updateProgress(15, `准备下载 ${progress.file}...`);
                         }
                     }
                 }
@@ -511,19 +486,19 @@
             setTimeout(() => document.getElementById('progressBox').classList.remove('show'), 2000);
             
         } catch (error) {
-            console.error('详细错误:', error);
-            log(`❌ 错误详情: ${error.message}`);
-            log(`堆栈: ${error.stack}`);
+            console.error('模型加载错误:', error);
             
-            // 提供针对性提示
-            let tip = '';
+            // 详细的错误诊断
+            let diagnosis = '';
             if (error.message.includes('Unexpected token')) {
-                tip = '<br><small>💡 这通常意味着 CDN 返回了 HTML 错误页而非模型文件。请检查网络连接，或尝试开启 VPN。</small>';
+                diagnosis = '<br><strong>诊断：</strong>CDN 返回了 HTML 错误页（404/503）。<br>建议：① 切换网络（尝试手机热点）② 开启 VPN ③ 检查控制台 Network 标签';
             } else if (error.message.includes('Failed to fetch')) {
-                tip = '<br><small>💡 网络连接失败，请检查是否能访问 hf-mirror.com</small>';
+                diagnosis = '<br><strong>诊断：</strong>网络连接失败，无法连接到 CDN。<br>建议：检查网络连接，或尝试其他网络环境';
+            } else if (error.message.includes('fetch failed')) {
+                diagnosis = '<br><strong>诊断：</strong>可能是 CORS 或网络中断问题';
             }
             
-            showStatus(`❌ 失败：${error.message}${tip}`, 'error');
+            showStatus(`❌ 失败：${error.message}${diagnosis}`, 'error');
             updateProgress(0, '失败');
         } finally {
             btn.disabled = false;
